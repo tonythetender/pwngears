@@ -1,4 +1,4 @@
-package web
+package bfweb
 
 import (
 	"net/url"
@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"pwngears/bruteforce"
+	"pwngears/web"
 )
 
 type BruteforceOptions struct {
@@ -20,7 +21,7 @@ type BruteforceOptions struct {
 	ResponseTimeAbove time.Duration
 	ResponseTimeBelow time.Duration
 	ExtraFormFields   map[string]string
-	CustomValidator   func(*Response) bool
+	CustomValidator   func(*web.Response) bool
 }
 
 type BruteforceOption func(*BruteforceOptions)
@@ -90,7 +91,7 @@ func WithResponseTimeBelow(duration time.Duration) BruteforceOption {
 	}
 }
 
-func WithCustomValidator(validator func(*Response) bool) BruteforceOption {
+func WithCustomValidator(validator func(*web.Response) bool) BruteforceOption {
 	return func(o *BruteforceOptions) {
 		o.CustomValidator = validator
 	}
@@ -105,7 +106,7 @@ func AlsoFillFormField(field, value string) BruteforceOption {
 	}
 }
 
-func evaluateOptions(resp *Response, duration time.Duration, opts *BruteforceOptions) bool {
+func evaluateOptions(resp *web.Response, duration time.Duration, opts *BruteforceOptions) bool {
 	if opts.RequireCode && resp.StatusCode != opts.ResponseCode {
 		return false
 	}
@@ -166,7 +167,7 @@ func evaluateOptions(resp *Response, duration time.Duration, opts *BruteforceOpt
 	return true
 }
 
-func GetRequestBf(c *Client, urlPattern string, options ...BruteforceOption) bruteforce.TestFunc {
+func GetRequestBf(c *web.Client, urlPattern string, options ...BruteforceOption) bruteforce.TestFunc {
 	opts := &BruteforceOptions{
 		ResponseCode: 200,
 		RequireCode:  false,
@@ -193,7 +194,7 @@ func GetRequestBf(c *Client, urlPattern string, options ...BruteforceOption) bru
 	}
 }
 
-func PostRequestBf(c *Client, path string, fieldName string, options ...BruteforceOption) bruteforce.TestFunc {
+func PostRequestBf(c *web.Client, path string, fieldName string, options ...BruteforceOption) bruteforce.TestFunc {
 	opts := &BruteforceOptions{
 		ResponseCode: 200,
 		RequireCode:  false,
@@ -223,7 +224,7 @@ func PostRequestBf(c *Client, path string, fieldName string, options ...Brutefor
 	}
 }
 
-func HeaderBf(c *Client, path string, headerName string, options ...BruteforceOption) bruteforce.TestFunc {
+func HeaderBf(c *web.Client, path string, headerName string, options ...BruteforceOption) bruteforce.TestFunc {
 	opts := &BruteforceOptions{
 		ResponseCode: 200,
 		RequireCode:  false,
@@ -247,7 +248,7 @@ func HeaderBf(c *Client, path string, headerName string, options ...BruteforceOp
 	}
 }
 
-func CookieBf(c *Client, path string, cookieName string, options ...BruteforceOption) bruteforce.TestFunc {
+func CookieBf(c *web.Client, path string, cookieName string, options ...BruteforceOption) bruteforce.TestFunc {
 	opts := &BruteforceOptions{
 		ResponseCode: 200,
 		RequireCode:  false,
@@ -271,7 +272,7 @@ func CookieBf(c *Client, path string, cookieName string, options ...BruteforceOp
 	}
 }
 
-func JSONBf(c *Client, path string, jsonTemplate string, options ...BruteforceOption) bruteforce.TestFunc {
+func JSONBf(c *web.Client, path string, jsonTemplate string, options ...BruteforceOption) bruteforce.TestFunc {
 	opts := &BruteforceOptions{
 		ResponseCode: 200,
 		RequireCode:  false,
@@ -296,7 +297,7 @@ func JSONBf(c *Client, path string, jsonTemplate string, options ...BruteforceOp
 	}
 }
 
-func MultiFormBf(c *Client, path string, formData url.Values, fuzzField string, options ...BruteforceOption) bruteforce.TestFunc {
+func MultiFormBf(c *web.Client, path string, formData url.Values, fuzzField string, options ...BruteforceOption) bruteforce.TestFunc {
 	opts := &BruteforceOptions{
 		ResponseCode: 200,
 		RequireCode:  false,
