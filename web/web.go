@@ -4,14 +4,11 @@ import (
 	"fmt"
 	"net/url"
 	"time"
-
-	"pwngears/bruteforce"
 )
 
 type WebConn struct {
-	Client      *Client
-	Bruteforcer *bruteforce.Bruteforcer
-	BaseURL     string
+	Client  *Client
+	BaseURL string
 }
 
 func Conn(baseURL string) (*WebConn, error) {
@@ -21,9 +18,8 @@ func Conn(baseURL string) (*WebConn, error) {
 	}
 
 	return &WebConn{
-		Client:      c,
-		Bruteforcer: bruteforce.NewBruteforcer(),
-		BaseURL:     baseURL,
+		Client:  c,
+		BaseURL: baseURL,
 	}, nil
 }
 
