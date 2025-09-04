@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"log/slog"
 	"net/url"
 	"time"
 )
@@ -9,9 +10,10 @@ import (
 type WebConn struct {
 	Client  *Client
 	BaseURL string
+	logger  *slog.Logger
 }
 
-func Conn(baseURL string) (*WebConn, error) {
+func ConnCore(logger *slog.Logger, baseURL string) (*WebConn, error) {
 	c, err := NewClient(baseURL)
 	if err != nil {
 		return nil, err
@@ -20,6 +22,7 @@ func Conn(baseURL string) (*WebConn, error) {
 	return &WebConn{
 		Client:  c,
 		BaseURL: baseURL,
+		logger:  logger,
 	}, nil
 }
 
@@ -29,31 +32,31 @@ func NewForm() url.Values {
 
 func (c *WebConn) Session() *Session {
 	return &Session{
-		ctf:     c,
+		Conn:    c,
 		cookies: make(map[string]string),
 		data:    make(map[string]interface{}),
 	}
 }
 
 type Session struct {
-	ctf     *WebConn
+	Conn    *WebConn
 	cookies map[string]string
 	data    map[string]interface{}
 }
 
 func (s *Session) Client() *Client {
-	return s.ctf.Client
+	return s.Conn.Client
 }
 
 func (s *Session) SaveCookies() {
-	for _, cookie := range s.ctf.Client.GetCookies() {
+	for _, cookie := range s.Conn.GetCookies() {
 		s.cookies[cookie.Name] = cookie.Value
 	}
 }
 
 func (s *Session) RestoreCookies() {
 	for name, value := range s.cookies {
-		s.ctf.Client.SetCookie(name, value)
+		s.Conn.SetCookie(name, value)
 	}
 }
 
