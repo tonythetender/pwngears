@@ -1,0 +1,121 @@
+package web
+
+import (
+	"fmt"
+	"log"
+	"log/slog"
+	"net/url"
+	"strings"
+
+	"github.com/tonythetender/pwngears"
+)
+
+type WebConnWithLogger struct {
+	Conn        *WebConn
+	failOnError bool
+}
+
+func Conn(baseUrl string) *WebConnWithLogger {
+	logger, err := pwngears.NewDefaultLogger("INFO")
+	if err != nil {
+		log.Fatal("error generating the default logger: %v", err)
+	}
+	return ConnWithLogger(baseUrl, logger)
+}
+
+func ConnWithLogger(baseUrl string, logger *slog.Logger) *WebConnWithLogger {
+	conn, err := ConnCore(logger, baseUrl)
+	if err != nil {
+		logger.Error("Could not establish connection to the given URL",
+			slog.String("error", err.Error()),
+			slog.String("url", baseUrl))
+	}
+	connWithLogger := WebConnWithLogger{
+		Conn:        conn,
+		failOnError: true,
+	}
+	return &connWithLogger
+}
+
+func (c *WebConnWithLogger) SetFailOnError(fail bool) {
+	c.failOnError = fail
+}
+
+func (c *WebConnWithLogger) SetLogLevel(logLevel string) {
+	switch logLevel {
+	case "DEBUG", "debug":
+		pwngears.LogLevel.Set(slog.LevelDebug)
+	case "INFO", "info":
+		pwngears.LogLevel.Set(slog.LevelInfo)
+	case "WARN", "warn":
+		pwngears.LogLevel.Set(slog.LevelWarn)
+	case "ERROR", "error":
+		pwngears.LogLevel.Set(slog.LevelError)
+	case "IGNORE", "ignore":
+		pwngears.LogLevel.Set(12)
+	}
+}
+
+func (c *WebConnWithLogger) Get(path string, opts ...RequestOption) *Response {
+	resp, err := c.Conn.Get(path, opts...)
+	if err != nil {
+		c.Conn.logger.Error("Error during GET request",
+			slog.String("error", err.Error()),
+			slog.String("base-url", c.Conn.BaseURL),
+			slog.String("path", path))
+		if c.failOnError {
+			log.Fatal()
+		}
+	}
+	return resp
+}
+
+func (c *WebConnWithLogger) Post(path string, data url.Values, opts ...RequestOption) *Response {
+	resp, err := c.Conn.Post(path, data, opts...)
+	if err != nil {
+		attrs := []any{}
+		for i, opt := range opts {
+			attrs = append(attrs, slog.String(fmt.Sprintf("opt[%d]", i), fmt.Sprint(opt)))
+		}
+		for k, v := range data {
+			attrs = append(attrs, slog.String(k, strings.Join(v, ",")))
+		}
+		c.Conn.logger.Error("Error during POST request",
+			slog.String("error", err.Error()),
+			slog.String("base-url", c.Conn.BaseURL),
+			slog.String("path", path),
+			attrs)
+		if c.failOnError {
+			log.Fatal()
+		}
+	}
+	return resp
+}
+
+func (c *WebConnWithLogger) DisableRedirect() {
+	c.Conn.DisableRedirect()
+}
+
+func (c *WebConnWithLogger) SetCookie(name, value string) {
+	c.Conn.logger.Debug("Setting Cookie",
+		slog.String(name, value))
+	c.Conn.SetCookie(name, value)
+}
+
+func (c *WebConn) logHeaders() {
+	headers := []slog.Attr{}
+	for k, v := range c.Client.headers {
+		headers = append(headers, slog.String(k, v))
+	}
+	c.logger.Debug("Using the following headers",
+		headers)
+}
+
+func (c *WebConn) logCookies() {
+	headers := []slog.Attr{}
+	for _, cookie := range c.GetCookies() {
+		headers = append(headers, slog.String(cookie.Name, cookie.Value))
+	}
+	c.logger.Debug("Using the following headers",
+		headers)
+}
