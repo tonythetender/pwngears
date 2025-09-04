@@ -102,7 +102,7 @@ func (c *WebConnWithLogger) SetCookie(name, value string) {
 	c.Conn.SetCookie(name, value)
 }
 
-func (c *WebConn) logHeaders() {
+func (c *Client) logHeaders() {
 	headers := []slog.Attr{}
 	for k, v := range c.Client.headers {
 		headers = append(headers, slog.String(k, v))
@@ -111,7 +111,7 @@ func (c *WebConn) logHeaders() {
 		headers)
 }
 
-func (c *WebConn) logCookies() {
+func (c *Client) logCookies() {
 	headers := []slog.Attr{}
 	for _, cookie := range c.GetCookies() {
 		headers = append(headers, slog.String(cookie.Name, cookie.Value))
