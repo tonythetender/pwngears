@@ -1,9 +1,17 @@
 package web
 
 func (c *WebConn) SetHeader(key, value string) {
-	c.Client.headers[key] = value
+	c.Client.SetHeader(key, value)
 }
 
 func (c *WebConn) RemoveHeader(key string) {
-	delete(c.Client.headers, key)
+	c.Client.RemoveHeader(key)
+}
+
+func (c *Client) SetHeader(key, value string) {
+	c.headers[key] = value
+}
+
+func (c *Client) RemoveHeader(key string) {
+	delete(c.headers, key)
 }

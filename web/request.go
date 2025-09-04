@@ -11,20 +11,28 @@ import (
 )
 
 func (c *WebConn) Get(path string, opts ...RequestOption) (*Response, error) {
+	return c.Client.Get(path, opts...)
+}
+
+func (c *WebConn) Post(path string, data url.Values, opts ...RequestOption) (*Response, error) {
+	return c.Client.Post(path, data, opts...)
+}
+
+func (c *Client) Get(path string, opts ...RequestOption) (*Response, error) {
 	attrs := []any{
-		slog.String("url", c.Client.baseURL),
+		slog.String("url", c.baseURL),
 		slog.String("path", path),
 	}
 	for i, opt := range opts {
 		attrs = append(attrs, slog.String(fmt.Sprintf("opt[%d]", i), fmt.Sprint(opt)))
 	}
 	c.logger.Debug("Making a GET request", attrs)
-	return c.Client.request("GET", path, nil, opts...)
+	return c.request("GET", path, nil, opts...)
 }
 
-func (c *WebConn) Post(path string, data url.Values, opts ...RequestOption) (*Response, error) {
+func (c *Client) Post(path string, data url.Values, opts ...RequestOption) (*Response, error) {
 	c.logger.Info("Making a GET request",
-		slog.String("url", c.Client.baseURL),
+		slog.String("url", c.baseURL),
 		slog.String("path", path))
 	options := []slog.Attr{}
 	for i, opt := range opts {
@@ -32,7 +40,7 @@ func (c *WebConn) Post(path string, data url.Values, opts ...RequestOption) (*Re
 	}
 	c.logger.Debug("Using the following options",
 		options)
-	if len(c.Client.headers) != 0 {
+	if len(c.headers) != 0 {
 		c.logHeaders()
 	}
 	if len(c.GetCookies()) != 0 {

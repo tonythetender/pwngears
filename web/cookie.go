@@ -6,7 +6,19 @@ import (
 )
 
 func (c *WebConn) SetCookie(name, value string) error {
-	u, err := url.Parse(c.Client.baseURL)
+	return c.Client.SetCookie(name, value)
+}
+
+func (c *WebConn) RemoveCookie(name string) error {
+	return c.Client.RemoveCookie(name)
+}
+
+func (c *WebConn) GetCookies() []*http.Cookie {
+	return c.Client.GetCookies()
+}
+
+func (c *Client) SetCookie(name, value string) error {
+	u, err := url.Parse(c.baseURL)
 	if err != nil {
 		return err
 	}
@@ -19,27 +31,27 @@ func (c *WebConn) SetCookie(name, value string) error {
 			Path:   "/",
 		},
 	}
-	c.Client.jar.SetCookies(u, cookies)
+	c.jar.SetCookies(u, cookies)
 	return nil
 }
 
-func (c *WebConn) RemoveCookie(name string) error {
+func (c *Client) RemoveCookie(name string) error {
 	var updatedCookies []*http.Cookie
-	u, err := url.Parse(c.Client.baseURL)
+	u, err := url.Parse(c.baseURL)
 	if err != nil {
 		return err
 	}
 
-	for _, cookie := range c.Client.jar.Cookies(u) {
+	for _, cookie := range c.jar.Cookies(u) {
 		if cookie.Name != name {
 			updatedCookies = append(updatedCookies, cookie)
 		}
 	}
-	c.Client.jar.SetCookies(u, updatedCookies)
+	c.jar.SetCookies(u, updatedCookies)
 	return nil
 }
 
-func (c *WebConn) GetCookies() []*http.Cookie {
-	u, _ := url.Parse(c.Client.baseURL)
-	return c.Client.jar.Cookies(u)
+func (c *Client) GetCookies() []*http.Cookie {
+	u, _ := url.Parse(c.baseURL)
+	return c.jar.Cookies(u)
 }
