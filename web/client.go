@@ -2,6 +2,7 @@ package web
 
 import (
 	"fmt"
+	"log/slog"
 	"net/http"
 	"net/http/cookiejar"
 	"time"
@@ -12,9 +13,10 @@ type Client struct {
 	baseURL    string
 	headers    map[string]string
 	jar        *cookiejar.Jar
+	logger     *slog.Logger
 }
 
-func NewClient(baseURL string) (*Client, error) {
+func NewClient(baseURL string, logger *slog.Logger) (*Client, error) {
 	jar, err := cookiejar.New(nil)
 	if err != nil {
 		return nil, err
@@ -34,6 +36,7 @@ func NewClient(baseURL string) (*Client, error) {
 		baseURL: baseURL,
 		headers: make(map[string]string),
 		jar:     jar,
+		logger:  logger,
 	}, nil
 }
 
