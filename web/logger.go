@@ -18,7 +18,7 @@ type WebConnWithLogger struct {
 func Conn(baseUrl string) *WebConnWithLogger {
 	logger, err := pwngears.NewDefaultLogger("INFO")
 	if err != nil {
-		log.Fatal("error generating the default logger: %v", err)
+		log.Fatalf("error generating the default logger: %v", err)
 	}
 	return ConnWithLogger(baseUrl, logger)
 }
@@ -73,18 +73,20 @@ func (c *WebConnWithLogger) Get(path string, opts ...RequestOption) *Response {
 func (c *WebConnWithLogger) Post(path string, data url.Values, opts ...RequestOption) *Response {
 	resp, err := c.Conn.Post(path, data, opts...)
 	if err != nil {
-		attrs := []any{}
+		optsAttr := make([]slog.Attr, 0)
 		for i, opt := range opts {
-			attrs = append(attrs, slog.String(fmt.Sprintf("opt[%d]", i), fmt.Sprint(opt)))
+			optsAttr = append(optsAttr, slog.String(fmt.Sprintf("opt[%d]", i), fmt.Sprint(opt)))
 		}
+		dataAttr := make([]slog.Attr, 0)
 		for k, v := range data {
-			attrs = append(attrs, slog.String(k, strings.Join(v, ",")))
+			dataAttr = append(dataAttr, slog.String(k, strings.Join(v, ",")))
 		}
 		c.Conn.logger.Error("Error during POST request",
 			slog.String("error", err.Error()),
 			slog.String("base-url", c.Conn.BaseURL),
 			slog.String("path", path),
-			attrs)
+			"options", slog.GroupValue(optsAttr...),
+			"data", slog.GroupValue(dataAttr...))
 		if c.failOnError {
 			log.Fatal()
 		}
@@ -103,19 +105,19 @@ func (c *WebConnWithLogger) SetCookie(name, value string) {
 }
 
 func (c *Client) logHeaders() {
-	headers := []slog.Attr{}
-	for k, v := range c.Client.headers {
-		headers = append(headers, slog.String(k, v))
+	attrs := make([]slog.Attr, 0, len(c.headers))
+	for k, v := range c.headers {
+		attrs = append(attrs, slog.String(k, v))
 	}
 	c.logger.Debug("Using the following headers",
-		headers)
+		"headers", slog.GroupValue(attrs...))
 }
 
 func (c *Client) logCookies() {
-	headers := []slog.Attr{}
+	attrs := make([]slog.Attr, 0, len(c.GetCookies()))
 	for _, cookie := range c.GetCookies() {
-		headers = append(headers, slog.String(cookie.Name, cookie.Value))
+		attrs = append(attrs, slog.String(cookie.Name, cookie.Value))
 	}
 	c.logger.Debug("Using the following headers",
-		headers)
+		"cookies", slog.GroupValue(attrs...))
 }
