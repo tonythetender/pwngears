@@ -46,7 +46,7 @@ func (c *Client) Post(path string, data url.Values, opts ...RequestOption) (*Res
 	if len(c.GetCookies()) != 0 {
 		c.logCookies()
 	}
-	return c.Client.request("POST", path, data, opts...)
+	return c.request("POST", path, data, opts...)
 }
 
 func (c *Client) request(method, path string, data interface{}, opts ...RequestOption) (*Response, error) {
