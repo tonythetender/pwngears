@@ -5,8 +5,8 @@ import (
 	"strings"
 	"time"
 
-	"pwngears/bruteforce"
-	"pwngears/web"
+	"github.com/tonythetender/pwngears/bruteforce"
+	"github.com/tonythetender/pwngears/web"
 )
 
 type BruteforceOptions struct {
@@ -272,30 +272,30 @@ func CookieBf(c *web.Client, path string, cookieName string, options ...Brutefor
 	}
 }
 
-func JSONBf(c *web.Client, path string, jsonTemplate string, options ...BruteforceOption) bruteforce.TestFunc {
-	opts := &BruteforceOptions{
-		ResponseCode: 200,
-		RequireCode:  false,
-	}
-
-	for _, option := range options {
-		option(opts)
-	}
-
-	return func(payload string) (bool, error) {
-		jsonData := strings.Replace(jsonTemplate, "FUZZ", payload, -1)
-		c.SetHeader("Content-Type", "application/json")
-
-		start := time.Now()
-		resp, err := c.Post(path, jsonData)
-		if err != nil {
-			return false, err
-		}
-		duration := time.Since(start)
-
-		return evaluateOptions(resp, duration, opts), nil
-	}
-}
+// func JSONBf(c *web.Client, path string, jsonTemplate string, options ...BruteforceOption) bruteforce.TestFunc {
+// 	opts := &BruteforceOptions{
+// 		ResponseCode: 200,
+// 		RequireCode:  false,
+// 	}
+//
+// 	for _, option := range options {
+// 		option(opts)
+// 	}
+//
+// 	return func(payload string) (bool, error) {
+// 		jsonData := strings.Replace(jsonTemplate, "FUZZ", payload, -1)
+// 		c.SetHeader("Content-Type", "application/json")
+//
+// 		start := time.Now()
+// 		resp, err := c.Post(path, jsonData)
+// 		if err != nil {
+// 			return false, err
+// 		}
+// 		duration := time.Since(start)
+//
+// 		return evaluateOptions(resp, duration, opts), nil
+// 	}
+// }
 
 func MultiFormBf(c *web.Client, path string, formData url.Values, fuzzField string, options ...BruteforceOption) bruteforce.TestFunc {
 	opts := &BruteforceOptions{
