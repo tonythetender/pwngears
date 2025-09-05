@@ -167,7 +167,7 @@ func evaluateOptions(resp *web.Response, duration time.Duration, opts *Bruteforc
 	return true
 }
 
-func GetRequestBf(c *web.Client, urlPattern string, options ...BruteforceOption) bruteforce.TestFunc {
+func GetRequestBf(c web.Connection, urlPattern string, options ...BruteforceOption) bruteforce.TestFunc {
 	opts := &BruteforceOptions{
 		ResponseCode: 200,
 		RequireCode:  false,
@@ -184,7 +184,7 @@ func GetRequestBf(c *web.Client, urlPattern string, options ...BruteforceOption)
 		}
 
 		start := time.Now()
-		resp, err := c.Get(fullURL)
+		resp, err := c.Client().Get(fullURL)
 		if err != nil {
 			return false, err
 		}
@@ -194,7 +194,7 @@ func GetRequestBf(c *web.Client, urlPattern string, options ...BruteforceOption)
 	}
 }
 
-func PostRequestBf(c *web.Client, path string, fieldName string, options ...BruteforceOption) bruteforce.TestFunc {
+func PostRequestBf(c web.Connection, path string, fieldName string, options ...BruteforceOption) bruteforce.TestFunc {
 	opts := &BruteforceOptions{
 		ResponseCode: 200,
 		RequireCode:  false,
@@ -214,7 +214,7 @@ func PostRequestBf(c *web.Client, path string, fieldName string, options ...Brut
 		}
 
 		start := time.Now()
-		resp, err := c.Post(path, data)
+		resp, err := c.Client().Post(path, data)
 		if err != nil {
 			return false, err
 		}
@@ -224,7 +224,7 @@ func PostRequestBf(c *web.Client, path string, fieldName string, options ...Brut
 	}
 }
 
-func HeaderBf(c *web.Client, path string, headerName string, options ...BruteforceOption) bruteforce.TestFunc {
+func HeaderBf(c web.Connection, path string, headerName string, options ...BruteforceOption) bruteforce.TestFunc {
 	opts := &BruteforceOptions{
 		ResponseCode: 200,
 		RequireCode:  false,
@@ -235,10 +235,10 @@ func HeaderBf(c *web.Client, path string, headerName string, options ...Brutefor
 	}
 
 	return func(payload string) (bool, error) {
-		c.SetHeader(headerName, payload)
+		c.Client().SetHeader(headerName, payload)
 
 		start := time.Now()
-		resp, err := c.Get(path)
+		resp, err := c.Client().Get(path)
 		if err != nil {
 			return false, err
 		}
@@ -248,7 +248,7 @@ func HeaderBf(c *web.Client, path string, headerName string, options ...Brutefor
 	}
 }
 
-func CookieBf(c *web.Client, path string, cookieName string, options ...BruteforceOption) bruteforce.TestFunc {
+func CookieBf(c web.Connection, path string, cookieName string, options ...BruteforceOption) bruteforce.TestFunc {
 	opts := &BruteforceOptions{
 		ResponseCode: 200,
 		RequireCode:  false,
@@ -259,10 +259,10 @@ func CookieBf(c *web.Client, path string, cookieName string, options ...Brutefor
 	}
 
 	return func(payload string) (bool, error) {
-		c.SetCookie(cookieName, payload)
+		c.Client().SetCookie(cookieName, payload)
 
 		start := time.Now()
-		resp, err := c.Get(path)
+		resp, err := c.Client().Get(path)
 		if err != nil {
 			return false, err
 		}
@@ -297,7 +297,7 @@ func CookieBf(c *web.Client, path string, cookieName string, options ...Brutefor
 // 	}
 // }
 
-func MultiFormBf(c *web.Client, path string, formData url.Values, fuzzField string, options ...BruteforceOption) bruteforce.TestFunc {
+func MultiFormBf(c web.Connection, path string, formData url.Values, fuzzField string, options ...BruteforceOption) bruteforce.TestFunc {
 	opts := &BruteforceOptions{
 		ResponseCode: 200,
 		RequireCode:  false,
@@ -317,7 +317,7 @@ func MultiFormBf(c *web.Client, path string, formData url.Values, fuzzField stri
 		data.Set(fuzzField, payload)
 
 		start := time.Now()
-		resp, err := c.Post(path, data)
+		resp, err := c.Client().Post(path, data)
 		if err != nil {
 			return false, err
 		}
