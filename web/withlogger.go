@@ -15,6 +15,13 @@ type WebConnWithLogger struct {
 	failOnError bool
 }
 
+func (c *WebConnWithLogger) logAndFatal(msg string, args ...any) {
+	c.Conn.logger.Error(msg, args...)
+	if c.failOnError {
+		log.Fatal()
+	}
+}
+
 func Conn(baseUrl string) *WebConnWithLogger {
 	logger, err := pwngears.NewDefaultLogger("INFO")
 	if err != nil {
@@ -24,7 +31,7 @@ func Conn(baseUrl string) *WebConnWithLogger {
 }
 
 func ConnWithLogger(baseUrl string, logger *slog.Logger) *WebConnWithLogger {
-	conn, err := ConnCore(logger, baseUrl)
+	conn, err := NewConn(logger, baseUrl)
 	if err != nil {
 		logger.Error("Could not establish connection to the given URL",
 			slog.String("error", err.Error()),
@@ -59,13 +66,10 @@ func (c *WebConnWithLogger) SetLogLevel(logLevel string) {
 func (c *WebConnWithLogger) Get(path string, opts ...RequestOption) *Response {
 	resp, err := c.Conn.Get(path, opts...)
 	if err != nil {
-		c.Conn.logger.Error("Error during GET request",
+		c.logAndFatal("Error during GET request",
 			slog.String("error", err.Error()),
 			slog.String("base-url", c.Conn.BaseURL),
 			slog.String("path", path))
-		if c.failOnError {
-			log.Fatal()
-		}
 	}
 	return resp
 }
@@ -81,15 +85,12 @@ func (c *WebConnWithLogger) Post(path string, data url.Values, opts ...RequestOp
 		for k, v := range data {
 			dataAttr = append(dataAttr, slog.String(k, strings.Join(v, ",")))
 		}
-		c.Conn.logger.Error("Error during POST request",
+		c.logAndFatal("Error during POST request",
 			slog.String("error", err.Error()),
 			slog.String("base-url", c.Conn.BaseURL),
 			slog.String("path", path),
 			"options", slog.GroupValue(optsAttr...),
 			"data", slog.GroupValue(dataAttr...))
-		if c.failOnError {
-			log.Fatal()
-		}
 	}
 	return resp
 }
@@ -120,4 +121,12 @@ func (c *Client) logCookies() {
 	}
 	c.logger.Debug("Using the following headers",
 		"cookies", slog.GroupValue(attrs...))
+}
+
+func (c *WebConnWithLogger) Client() *Client {
+	return c.Conn.Client
+}
+
+func (c *WebConnWithLogger) Session() *Session {
+	return c.Conn.Session()
 }
