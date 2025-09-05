@@ -13,8 +13,8 @@ type WebConn struct {
 	logger  *slog.Logger
 }
 
-func ConnCore(logger *slog.Logger, baseURL string) (*WebConn, error) {
-	c, err := NewClient(baseURL)
+func NewConn(logger *slog.Logger, baseURL string) (*WebConn, error) {
+	c, err := NewClient(baseURL, logger)
 	if err != nil {
 		return nil, err
 	}

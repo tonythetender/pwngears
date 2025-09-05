@@ -16,7 +16,7 @@ func ConnWithErrors(baseUrl string) (*WebConnWithErrors, error) {
 	if err != nil {
 		log.Fatal("error generating the default logger: %v", err)
 	}
-	conn, err := ConnCore(logger, baseUrl)
+	conn, err := NewConn(logger, baseUrl)
 	if err != nil {
 		return nil, err
 	}
@@ -44,4 +44,12 @@ func (c *WebConnWithErrors) SetCookie(name, value string) error {
 		return err
 	}
 	return nil
+}
+
+func (c *WebConnWithErrors) Client() *Client {
+	return c.Conn.Client
+}
+
+func (c *WebConnWithErrors) Session() *Session {
+	return c.Conn.Session()
 }
