@@ -18,6 +18,10 @@ func (r *Response) Text() string {
 	return string(r.Body)
 }
 
+func (r *Response) Lines() []string {
+	return strings.Split(string(r.Body), "\n")
+}
+
 func (r *Response) Contains(s string) bool {
 	return strings.Contains(r.Text(), s)
 }
