@@ -137,3 +137,13 @@ func WithHeader(key, value string) RequestOption {
 		req.Header.Set(key, value)
 	}
 }
+
+func WithCookie(name, value string) RequestOption {
+	return func(req *http.Request, _ *url.URL) {
+		cookie := http.Cookie{
+			Name:  name,
+			Value: value,
+		}
+		req.AddCookie(&cookie)
+	}
+}
