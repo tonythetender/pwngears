@@ -1,16 +1,31 @@
 Pwngears is a CTF framework and exploit development library based on pwntools. It aims to provide an improved API and better error handling while adding more functionnalities regarding challenges other than binary exploitation. It also aims to provide its core package without any external dependencies, leveraging the Go standard library. 
 
-## Why Go?
+## Why Go? And why make an alternative to Pwntools?
 - Compiles into a static binary, eliminating risk of an exploit not working on somebody else version of the python interpreter. Also has easy cross compilation.
 - Good performance and cheap goroutines allows for easy and quick byte-by-bytes leaks, length leaks and blind SQLI.
 - The Go standard library provides all the tooling to make this library possible. This eliminates the dependency on other libraries the same way pwntools requires.
 - Strong static typing helps prevents inattention errors during the writing of your exploit.
 - Compare to other great compiled language, Go also provide good developer velocity with a clear and concise syntax.
-- No indentation based blocks, enough said
+
+## Exclusive features that are not included in Pwntools
+- Proper web support. The web package will allow you to built your exploit to be sent over the web easily, while also providing more advanced function to prevent a lot of boilerplate code.
+- Cryptography support. The crypto package will make it simple to encrypt, decrypt but also brute-force some encryption and cyphers. This package makes use of goroutines to allow the usage of all your CPU cores for better decryption performance.
+- Wordlist and premade payloads. A lot of common payloads are embbeded to make it easy to build injections and other payloads.
+- CLI tools to run some useful commands without building a go project. Allows encryption and decryption directly from the command line as well as other useful commands for CTF challenges.
+
+## Upcoming features
+- [x] Possibility to opt in and out of error returns and instead use a logger
+- [x] Cryptography support
+- [ ] ELF support
+- [ ] Exploit skeleton builder for quick setup with necessary packages
+- [ ] GPU accelerated brute forcing
+- [ ] Image layer analysis
 
 ## Quick Showcase
 ```go
-// Binary Exploitation
+// --------------------------------------
+// -------- BINARY EXPLOITATION ---------
+// --------------------------------------
 p := Process("./supersecure")
 defer p.Close()
 
@@ -49,7 +64,9 @@ r.SendPayload(payload)
 
 key := r.RecvAllString(3 * time.Second)
 
-// Web
+// --------------------------------------
+// --------------- WEB ------------------
+// --------------------------------------
 conn := Conn("http://some-ctf-website.com")
 
 resp := conn.Get("/search",
@@ -68,13 +85,27 @@ form.Set("username", "admin")
 form.Set("pass", pass)
 loginResp := conn.Post("/login", form)
 
-var flag string
-flagPattern := regexp.MustCompile(`FLAG:{(.*)}`)
-if flagPattern.MatchString() {
-	flag = flagPattern.FindStringSubmatch(line)[1]
-}
-fmt.Printf("FLAG: %v, flag")
+encryptedflagPattern := regexp.MustCompile(`secret-encrypted-flag:(.*)\n`)
+encryptedFlag := flagPattern.FindStringSubmatch(line)[1]
+// --------------------------------------
+// ------------ CRYPTOGRAPHY ------------
+// --------------------------------------
 
+engine := NewCryptoEngine()
+
+xorLower := XORCipher{
+	KeyAlphabet: []byte("abcdefghijklmnopqrstuvwxyz123456789"),
+}
+
+results := engine.BruteForce(xorLower, cypher,
+	WithMaxKeyLength(8),
+	WithFindAllPossibleKeys(false),
+	WithPatternPrefix("PWNGEARS{"),
+	WithPatternSuffix("}"),
+
+for _, r := range results {
+	fmt.Printf("[%s] key=%q\n%s\n", r.Cipher, r.Key, r.Plaintext)
+}
 ```
 
 ## Installation
