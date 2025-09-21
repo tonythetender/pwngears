@@ -3,22 +3,20 @@ package process
 import (
 	"bufio"
 	"bytes"
-	"crypto/tls"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io"
-	"net"
 	"os"
 	"os/exec"
 	"syscall"
 	"time"
 )
 
-type LogLevel int
+type TubeLogLevel int
 
 const (
-	LogDebug LogLevel = iota
+	LogDebug TubeLogLevel = iota
 	LogInfo
 	LogSuccess
 	LogWarning
@@ -207,169 +205,6 @@ func (t *baseTube) Close() error {
 	return nil
 }
 
-type ProcessConn struct {
-	baseTube
-	cmd    *exec.Cmd
-	stdin  io.WriteCloser
-	stdout io.ReadCloser
-	stderr io.ReadCloser
-}
-
-func NewProcess(args []string, env map[string]string) (*ProcessConn, error) {
-	cmd := exec.Command(args[0], args[1:]...)
-
-	for k, v := range env {
-		cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%s", k, v))
-	}
-
-	stdin, err := cmd.StdinPipe()
-	if err != nil {
-		return nil, err
-	}
-
-	stdout, err := cmd.StdoutPipe()
-	if err != nil {
-		return nil, err
-	}
-
-	stderr, err := cmd.StderrPipe()
-	if err != nil {
-		return nil, err
-	}
-
-	if err := cmd.Start(); err != nil {
-		return nil, err
-	}
-
-	p := &ProcessConn{
-		cmd:    cmd,
-		stdin:  stdin,
-		stdout: stdout,
-		stderr: stderr,
-	}
-
-	p.reader = bufio.NewReader(stdout)
-	p.writer = stdin
-	p.closer = stdin
-
-	Log(LogInfo, "Process", fmt.Sprintf("Started process with PID %d", cmd.Process.Pid))
-
-	return p, nil
-}
-
-func Process(command string) (*ProcessConn, error) {
-	return NewProcess([]string{command}, nil)
-}
-
-func Proc(path string, args ...string) (*ProcessConn, error) {
-	allArgs := append([]string{path}, args...)
-	return NewProcess(allArgs, nil)
-}
-
-func (p *ProcessConn) GetPID() int {
-	if p.cmd != nil && p.cmd.Process != nil {
-		return p.cmd.Process.Pid
-	}
-	return -1
-}
-
-func (p *ProcessConn) Kill() error {
-	if p.cmd != nil && p.cmd.Process != nil {
-		return p.cmd.Process.Kill()
-	}
-	return nil
-}
-
-func (p *ProcessConn) Wait() error {
-	if p.cmd != nil {
-		return p.cmd.Wait()
-	}
-	return nil
-}
-
-type RemoteConn struct {
-	baseTube
-	conn net.Conn
-	host string
-	port int
-	ssl  bool
-}
-
-func NewRemote(host string, port int) (*RemoteConn, error) {
-	addr := fmt.Sprintf("%s:%d", host, port)
-	conn, err := net.Dial("tcp", addr)
-	if err != nil {
-		return nil, err
-	}
-
-	r := &RemoteConn{
-		conn: conn,
-		host: host,
-		port: port,
-		ssl:  false,
-	}
-
-	r.reader = bufio.NewReader(conn)
-	r.writer = conn
-	r.closer = conn
-
-	Log(LogInfo, "Remote", fmt.Sprintf("Connected to %s", addr))
-
-	return r, nil
-}
-
-func NewRemoteSSL(host string, port int) (*RemoteConn, error) {
-	addr := fmt.Sprintf("%s:%d", host, port)
-	conn, err := tls.Dial("tcp", addr, &tls.Config{
-		InsecureSkipVerify: true,
-	})
-	if err != nil {
-		return nil, err
-	}
-
-	r := &RemoteConn{
-		conn: conn,
-		host: host,
-		port: port,
-		ssl:  true,
-	}
-
-	r.reader = bufio.NewReader(conn)
-	r.writer = conn
-	r.closer = conn
-
-	Log(LogInfo, "Remote", fmt.Sprintf("Connected to %s (SSL)", addr))
-
-	return r, nil
-}
-
-func Connect(host string, port int) (*RemoteConn, error) {
-	return NewRemote(host, port)
-}
-
-func Remote(host string, port int) (*RemoteConn, error) {
-	return NewRemote(host, port)
-}
-
-func RemoteSSL(host string, port int) (*RemoteConn, error) {
-	return NewRemote(host, port)
-}
-
-func ConnectSSL(host string, port int) (*RemoteConn, error) {
-	return NewRemoteSSL(host, port)
-}
-
-func (r *RemoteConn) GetPID() int {
-	return -1
-}
-
-func (r *RemoteConn) Reconnect() (*RemoteConn, error) {
-	if r.ssl {
-		return NewRemoteSSL(r.host, r.port)
-	}
-	return NewRemote(r.host, r.port)
-}
-
 type GDB struct {
 	process *ProcessConn
 	pid     int
@@ -456,94 +291,6 @@ func U64(b []byte) uint64 {
 	return binary.LittleEndian.Uint64(b)
 }
 
-type Payload struct {
-	data []byte
-}
-
-func NewPayload() *Payload {
-	return &Payload{data: []byte{}}
-}
-
-func Pay() *Payload {
-	return NewPayload()
-}
-
-func (p *Payload) Add(data interface{}) *Payload {
-	p.data = append(p.data, toBytes(data)...)
-	return p
-}
-
-func (p *Payload) AddRaw(data []byte) *Payload {
-	p.data = append(p.data, data...)
-	return p
-}
-
-func (p *Payload) Pad(char byte, length int) *Payload {
-	if len(p.data) < length {
-		padding := bytes.Repeat([]byte{char}, length-len(p.data))
-		p.data = append(p.data, padding...)
-	}
-	return p
-}
-
-func (p *Payload) PadTo(length int) *Payload {
-	return p.Pad('A', length)
-}
-
-func (p *Payload) P8(v uint8) *Payload {
-	p.data = append(p.data, P8(v)...)
-	return p
-}
-
-func (p *Payload) P16(v uint16) *Payload {
-	p.data = append(p.data, P16(v)...)
-	return p
-}
-
-func (p *Payload) P32(v uint32) *Payload {
-	p.data = append(p.data, P32(v)...)
-	return p
-}
-
-func (p *Payload) P64(v uint64) *Payload {
-	p.data = append(p.data, P64(v)...)
-	return p
-}
-
-func (p *Payload) Repeat(data interface{}, count int) *Payload {
-	b := toBytes(data)
-	p.data = append(p.data, bytes.Repeat(b, count)...)
-	return p
-}
-
-func (p *Payload) Canary(canary []byte) *Payload {
-	p.data = append(p.data, canary...)
-	return p
-}
-
-func (p *Payload) Len() int {
-	return len(p.data)
-}
-
-func (p *Payload) Bytes() []byte {
-	return p.data
-}
-
-func (p *Payload) Send(tube Tube) error {
-	return tube.Send(p.data)
-}
-
-func (p *Payload) SendLine(tube Tube) error {
-	return tube.SendLine(p.data)
-}
-
-func (p *Payload) SendWithSize(tube Tube) error {
-	if err := tube.Send(P32(uint32(len(p.data)))); err != nil {
-		return err
-	}
-	return tube.Send(p.data)
-}
-
 func Cyclic(n int) []byte {
 	pattern := make([]byte, n)
 	for i := 0; i < n; i++ {
@@ -584,7 +331,7 @@ func reverseBytes(b []byte) []byte {
 	return result
 }
 
-func Log(level LogLevel, tag string, msg string) {
+func Log(level TubeLogLevel, tag string, msg string) {
 	if level < currentLogLevel {
 		return
 	}
@@ -610,7 +357,7 @@ func Log(level LogLevel, tag string, msg string) {
 	}
 }
 
-func SetLogLevel(level LogLevel) {
+func SetLogLevel(level TubeLogLevel) {
 	currentLogLevel = level
 }
 
