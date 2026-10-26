@@ -215,13 +215,27 @@ To do binary exploitation (ie pwning and reverse) you can connect to a process e
 conn := Process("./command")
 defer conn.Close()
 ```
+You can pass command-line arguments directly. To set environment variables (for example to load a specific libc with `LD_PRELOAD`), use `ProcessWith`.
+```go
+p := Process("./command", "arg1", "arg2")
+
+p := ProcessWith("./command",
+	WithArgs("arg1"),
+	WithEnv(map[string]string{"LD_PRELOAD": "./libc.so.6"}),
+)
+```
 Or through a tcp connection
 ```go
-conn := Remote("127.0.0.1", 12069)
+r := Remote("127.0.0.1", 12069)
 ```
-With the possibility of SSL over TCP
+With the possibility of SSL/TLS over TCP. Self-signed certificates are accepted by default, since CTF servers typically use them.
 ```go
-conn := RemoteSSL("127.0.0.1", 12069)
+r := Remote("127.0.0.1", 12069, SSL())
+```
+You can set a specific SNI or enforce proper certificate verification.
+```go
+r := Remote("127.0.0.1", 12069, SSL(), WithSNI("chal.ctf"))
+r := Remote("127.0.0.1", 12069, SSL(), WithVerifyCert(true))
 ```
 You can then send inputs directly to the process. The library takes care of converting the string to bytes, but you can also explicitly send bytes to it. Those wont be converted again.
 ```go

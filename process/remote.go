@@ -2,20 +2,26 @@ package process
 
 import (
 	"bufio"
+	"crypto/tls"
 	"fmt"
 	"net"
+	"strconv"
 )
 
 type RemoteConn struct {
 	baseTube
-	conn net.Conn
-	host string
-	port int
-	ssl  bool
+	conn       net.Conn
+	host       string
+	port       int
+	ssl        bool
+	sni        string
+	verifyCert bool
 }
 
 type RemoteOptions struct {
-	SSL bool
+	SSL        bool
+	SNI        string
+	VerifyCert bool
 }
 
 func WithSSL(sslOn bool) RemoteOption {
@@ -28,11 +34,25 @@ func SSL() RemoteOption {
 	return WithSSL(true)
 }
 
+func WithSNI(serverName string) RemoteOption {
+	return func(o *RemoteOptions) {
+		o.SNI = serverName
+	}
+}
+
+func WithVerifyCert(verify bool) RemoteOption {
+	return func(o *RemoteOptions) {
+		o.VerifyCert = verify
+	}
+}
+
 type RemoteOption func(*RemoteOptions)
 
 func getDefaultRemoteOptions() *RemoteOptions {
 	return &RemoteOptions{
-		SSL: false,
+		SSL:        false,
+		SNI:        "",
+		VerifyCert: false,
 	}
 }
 
@@ -42,17 +62,33 @@ func NewRemote(host string, port int, options ...RemoteOption) (*RemoteConn, err
 		option(opts)
 	}
 
-	addr := fmt.Sprintf("%s:%d", host, port)
-	conn, err := net.Dial("tcp", addr)
+	addr := net.JoinHostPort(host, strconv.Itoa(port))
+
+	var conn net.Conn
+	var err error
+	if opts.SSL {
+		sni := opts.SNI
+		if sni == "" {
+			sni = host
+		}
+		conn, err = tls.Dial("tcp", addr, &tls.Config{
+			ServerName:         sni,
+			InsecureSkipVerify: !opts.VerifyCert,
+		})
+	} else {
+		conn, err = net.Dial("tcp", addr)
+	}
 	if err != nil {
 		return nil, err
 	}
 
 	r := &RemoteConn{
-		conn: conn,
-		host: host,
-		port: port,
-		ssl:  opts.SSL,
+		conn:       conn,
+		host:       host,
+		port:       port,
+		ssl:        opts.SSL,
+		sni:        opts.SNI,
+		verifyCert: opts.VerifyCert,
 	}
 
 	r.reader = bufio.NewReader(conn)
@@ -73,8 +109,9 @@ func (r *RemoteConn) GetPID() int {
 }
 
 func (r *RemoteConn) Reconnect() (*RemoteConn, error) {
-	if r.ssl {
-		return NewRemote(r.host, r.port, WithSSL(true))
-	}
-	return NewRemote(r.host, r.port)
+	return NewRemote(r.host, r.port,
+		WithSSL(r.ssl),
+		WithSNI(r.sni),
+		WithVerifyCert(r.verifyCert),
+	)
 }
