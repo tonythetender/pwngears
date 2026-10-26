@@ -139,18 +139,68 @@ type ProcessConnWithLogger struct {
 	failOnError bool
 }
 
-func Process(path string, args ...string) *ProcessConnWithLogger {
-	logger, err := pwngears.NewDefaultLogger("INFO")
-	if err != nil {
-		slog.Default().Error("error generating the default logger", slog.String("error", err.Error()))
-		os.Exit(1)
+type processConfig struct {
+	args   []string
+	env    map[string]string
+	logger *slog.Logger
+}
+
+type ProcessOption func(*processConfig)
+
+func WithArgs(args ...string) ProcessOption {
+	return func(c *processConfig) { c.args = append(c.args, args...) }
+}
+
+func WithEnv(env map[string]string) ProcessOption {
+	return func(c *processConfig) {
+		if c.env == nil {
+			c.env = make(map[string]string)
+		}
+		for k, v := range env {
+			c.env[k] = v
+		}
 	}
-	return ProcessWithLogger(logger, path, args...)
+}
+
+func WithEnvVar(key, value string) ProcessOption {
+	return func(c *processConfig) {
+		if c.env == nil {
+			c.env = make(map[string]string)
+		}
+		c.env[key] = value
+	}
+}
+
+func WithProcessLogger(logger *slog.Logger) ProcessOption {
+	return func(c *processConfig) { c.logger = logger }
+}
+
+func Process(path string, args ...string) *ProcessConnWithLogger {
+	return ProcessWith(path, WithArgs(args...))
 }
 
 func ProcessWithLogger(logger *slog.Logger, path string, args ...string) *ProcessConnWithLogger {
-	allArgs := append([]string{path}, args...)
-	p, err := NewProcess(logger, allArgs, nil)
+	return ProcessWith(path, WithProcessLogger(logger), WithArgs(args...))
+}
+
+func ProcessWith(path string, opts ...ProcessOption) *ProcessConnWithLogger {
+	cfg := &processConfig{}
+	for _, opt := range opts {
+		opt(cfg)
+	}
+
+	logger := cfg.logger
+	if logger == nil {
+		l, err := pwngears.NewDefaultLogger("INFO")
+		if err != nil {
+			slog.Default().Error("error generating the default logger", slog.String("error", err.Error()))
+			os.Exit(1)
+		}
+		logger = l
+	}
+
+	allArgs := append([]string{path}, cfg.args...)
+	p, err := NewProcess(logger, allArgs, cfg.env)
 	if err != nil {
 		wd, _ := os.Getwd()
 		logger.Error("Could not start process",

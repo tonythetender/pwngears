@@ -21,8 +21,11 @@ type ProcessConn struct {
 func NewProcess(logger *slog.Logger, args []string, env map[string]string) (*ProcessConn, error) {
 	cmd := exec.Command(args[0], args[1:]...)
 
-	for k, v := range env {
-		cmd.Env = append(os.Environ(), fmt.Sprintf("%s=%s", k, v))
+	if len(env) > 0 {
+		cmd.Env = os.Environ()
+		for k, v := range env {
+			cmd.Env = append(cmd.Env, fmt.Sprintf("%s=%s", k, v))
+		}
 	}
 
 	stdin, err := cmd.StdinPipe()

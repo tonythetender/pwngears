@@ -24,6 +24,10 @@ func WithSSL(sslOn bool) RemoteOption {
 	}
 }
 
+func SSL() RemoteOption {
+	return WithSSL(true)
+}
+
 type RemoteOption func(*RemoteOptions)
 
 func getDefaultRemoteOptions() *RemoteOptions {
