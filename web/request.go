@@ -2,11 +2,14 @@ package web
 
 import (
 	"bytes"
+	"encoding/json"
 	"fmt"
 	"io"
+	"log"
 	"log/slog"
 	"net/http"
 	"net/url"
+	"os"
 	"strings"
 )
 
@@ -157,10 +160,12 @@ func (c *Client) request(method, path string, data interface{}, opts ...RequestO
 	}
 
 	return &Response{
-		StatusCode: resp.StatusCode,
-		Body:       bodyBytes,
-		Headers:    resp.Header,
-		Cookies:    c.jar.Cookies(req.URL),
+		StatusCode:  resp.StatusCode,
+		Body:        bodyBytes,
+		Headers:     resp.Header,
+		Cookies:     c.jar.Cookies(req.URL),
+		logger:      c.logger,
+		failOnError: c.failOnError,
 	}, nil
 }
 
@@ -200,4 +205,139 @@ func WithCookie(name, value string) RequestOption {
 		}
 		req.AddCookie(&cookie)
 	}
+}
+
+func WithCookies(cookies map[string]string) RequestOption {
+	return func(req *http.Request, _ *url.URL) {
+		for name, value := range cookies {
+			req.AddCookie(&http.Cookie{Name: name, Value: value})
+		}
+	}
+}
+
+func WithHeaders(headers map[string]string) RequestOption {
+	return func(req *http.Request, _ *url.URL) {
+		for k, v := range headers {
+			req.Header.Set(k, v)
+		}
+	}
+}
+
+func WithContentType(contentType string) RequestOption {
+	return func(req *http.Request, _ *url.URL) {
+		req.Header.Set("Content-Type", contentType)
+	}
+}
+
+func WithBasicAuth(username, password string) RequestOption {
+	return func(req *http.Request, _ *url.URL) {
+		req.SetBasicAuth(username, password)
+	}
+}
+
+func WithBearer(token string) RequestOption {
+	return func(req *http.Request, _ *url.URL) {
+		req.Header.Set("Authorization", "Bearer "+token)
+	}
+}
+
+type Fields map[string]string
+
+func parseFormArgs(args []any) (url.Values, []RequestOption, error) {
+	form := url.Values{}
+	var opts []RequestOption
+	var pairs []string
+	for _, a := range args {
+		switch v := a.(type) {
+		case Fields:
+			for k, val := range v {
+				form.Set(k, val)
+			}
+		case map[string]string:
+			for k, val := range v {
+				form.Set(k, val)
+			}
+		case url.Values:
+			for k, vals := range v {
+				for _, val := range vals {
+					form.Add(k, val)
+				}
+			}
+		case RequestOption:
+			opts = append(opts, v)
+		case string:
+			pairs = append(pairs, v)
+		default:
+			return nil, nil, fmt.Errorf("unsupported PostForm argument type: %T", a)
+		}
+	}
+	if len(pairs)%2 != 0 {
+		return nil, nil, fmt.Errorf("PostForm got an odd number of string arguments (%d); expected key/value pairs", len(pairs))
+	}
+	for i := 0; i < len(pairs); i += 2 {
+		form.Set(pairs[i], pairs[i+1])
+	}
+	return form, opts, nil
+}
+
+func (c *WebConn) PostForm(path string, args ...any) (*Response, error) {
+	return c.Client.PostForm(path, args...)
+}
+
+func (c *Client) PostForm(path string, args ...any) (*Response, error) {
+	form, opts, err := parseFormArgs(args)
+	if err != nil {
+		return nil, err
+	}
+	return c.Post(path, form, opts...)
+}
+
+func LoadFields(path string) Fields {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		log.Fatalf("pwngears: could not read fields file %q: %v", path, err)
+	}
+	dec := json.NewDecoder(bytes.NewReader(data))
+	dec.UseNumber()
+	var raw map[string]any
+	if err := dec.Decode(&raw); err != nil {
+		log.Fatalf("pwngears: could not parse fields file %q: %v", path, err)
+	}
+	f := make(Fields, len(raw))
+	for k, v := range raw {
+		f[k] = fmt.Sprint(v)
+	}
+	return f
+}
+
+func LoadJSON(path string) []byte {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		log.Fatalf("pwngears: could not read JSON file %q: %v", path, err)
+	}
+	return data
+}
+
+func toJSONBody(v any) ([]byte, error) {
+	switch b := v.(type) {
+	case []byte:
+		return b, nil
+	case string:
+		return []byte(b), nil
+	default:
+		return json.Marshal(v)
+	}
+}
+
+func (c *WebConn) PostJSON(path string, v any, opts ...RequestOption) (*Response, error) {
+	return c.Client.PostJSON(path, v, opts...)
+}
+
+func (c *Client) PostJSON(path string, v any, opts ...RequestOption) (*Response, error) {
+	body, err := toJSONBody(v)
+	if err != nil {
+		return nil, err
+	}
+	allOpts := append([]RequestOption{WithContentType("application/json")}, opts...)
+	return c.request("POST", path, body, allOpts...)
 }

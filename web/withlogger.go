@@ -46,6 +46,7 @@ func ConnWithLogger(baseUrl string, logger *slog.Logger) *WebConnWithLogger {
 
 func (c *WebConnWithLogger) SetFailOnError(fail bool) {
 	c.failOnError = fail
+	c.Conn.Client.failOnError = fail
 }
 
 func (c *WebConnWithLogger) SetLogLevel(logLevel string) {
@@ -91,6 +92,28 @@ func (c *WebConnWithLogger) Post(path string, data url.Values, opts ...RequestOp
 			slog.String("path", path),
 			"options", slog.GroupValue(optsAttr...),
 			"data", slog.GroupValue(dataAttr...))
+	}
+	return resp
+}
+
+func (c *WebConnWithLogger) PostForm(path string, args ...any) *Response {
+	resp, err := c.Conn.PostForm(path, args...)
+	if err != nil {
+		c.logAndFatal("Error during POST form request",
+			slog.String("error", err.Error()),
+			slog.String("base-url", c.Conn.BaseURL),
+			slog.String("path", path))
+	}
+	return resp
+}
+
+func (c *WebConnWithLogger) PostJSON(path string, v any, opts ...RequestOption) *Response {
+	resp, err := c.Conn.PostJSON(path, v, opts...)
+	if err != nil {
+		c.logAndFatal("Error during POST JSON request",
+			slog.String("error", err.Error()),
+			slog.String("base-url", c.Conn.BaseURL),
+			slog.String("path", path))
 	}
 	return resp
 }

@@ -198,12 +198,94 @@ resp := conn.Get("/search",
 	WithParam("size", "9"))
 
 ```
-You can add header the same way or cookies the same way
+You can add headers or cookies the same way, one at a time or in bulk.
 ```go
-resp, err := conn.Get("/search",
-	WithHeader("Content-Type", "application/json"))
+resp := conn.Get("/search",
+	WithHeader("Content-Type", "application/json"),
+	WithCookie("session", "abc123"))
+
+resp := conn.Get("/admin",
+	WithHeaders(map[string]string{"X-Forwarded-For": "127.0.0.1"}),
+	WithCookies(map[string]string{"role": "admin"}))
+```
+Authentication options are also available.
+```go
+resp := conn.Get("/api", WithBearer(token))
+resp := conn.Get("/api", WithBasicAuth("admin", "admin"))
 ```
 
+To send a POST request, `PostForm` is the quickest way. You can pass the fields as key/value pairs, as a `Fields` map, or mix in request options.
+```go
+resp := conn.PostForm("/login", "username", "admin", "password", "hunter2")
+
+resp := conn.PostForm("/login", Fields{
+	"username": "admin",
+	"password": "hunter2",
+})
+
+resp := conn.PostForm("/login", Fields{"username": "admin"},
+	WithHeader("X-CSRF-Token", token))
+```
+If you need multi-value fields or already have a `url.Values`, `Post` takes one directly.
+```go
+form := NewForm()
+form.Add("tag", "a")
+form.Add("tag", "b")
+resp := conn.Post("/filter", form)
+```
+The other HTTP verbs are available too. `Put` and `Patch` take a form body like `Post`, while `Delete`, `Head` and `Options` take only options.
+```go
+conn.Put("/item/1", Fields{"name": "updated"})
+conn.Delete("/item/1")
+conn.Head("/large-file")
+```
+
+### JSON
+When a challenge expects a JSON body instead of a form, use `PostJSON`. It accepts a struct, a map, or raw `string`/`[]byte`, and sets the `application/json` content type for you.
+```go
+resp := conn.PostJSON("/api/login", map[string]any{
+	"username": "admin",
+	"id":       1,
+})
+```
+You can also keep the body or the form fields in a file and load them at runtime. `LoadFields` reads a JSON object into form fields (sent url-encoded, like a normal form), while `LoadJSON` reads a file to send as a raw JSON body.
+```go
+resp := conn.PostForm("/login", LoadFields("login.json"))
+resp := conn.PostJSON("/api", LoadJSON("payload.json"))
+```
+To read a JSON response back, pass a pointer to `JSON`.
+```go
+var out struct {
+	Token string `json:"token"`
+}
+resp.JSON(&out)
+fmt.Println(out.Token)
+```
+
+### Reading responses
+The response gives you a few helpers to avoid writing regexes by hand. `Match` returns the first capture group (or the whole match if there is no group), while `MatchAll` returns every match.
+```go
+resp := conn.Get("/profile")
+
+pass := resp.Match(`password: (\w+)`)
+tokens := resp.MatchAll(`token=(\w+)`)
+flag := resp.Flag("FLAG")
+```
+> [!NOTE]
+> With the default (logger) connection, `Match` and `Flag` stop the program if nothing matches, since you usually expect the value to be there. Use `SetFailOnError(false)` to instead get an empty result, or use the error-returning connection. `MatchAll` never fails on zero matches.
+
+You can also inspect the status, headers and cookies directly.
+```go
+if resp.OK() {            // status in the 2xx range
+	// ...
+}
+resp.Is(302)              // status code equals
+resp.Location()           // Location header
+resp.Cookie("session")    // value of a response cookie by name
+resp.Text()               // body as a string
+resp.Lines()              // body split into lines
+resp.Contains("admin")    // substring check on the body
+```
 
 ### Binary exploitation
 You'll first need to import the process package.

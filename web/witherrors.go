@@ -20,6 +20,7 @@ func ConnWithErrors(baseUrl string) (*WebConnWithErrors, error) {
 	if err != nil {
 		return nil, err
 	}
+	conn.Client.failOnError = false
 	connWithErrors := WebConnWithErrors{
 		Conn: conn,
 	}
@@ -32,6 +33,14 @@ func (c *WebConnWithErrors) Get(path string, opts ...RequestOption) (*Response, 
 
 func (c *WebConnWithErrors) Post(path string, data url.Values, opts ...RequestOption) (*Response, error) {
 	return c.Conn.Post(path, data, opts...)
+}
+
+func (c *WebConnWithErrors) PostForm(path string, args ...any) (*Response, error) {
+	return c.Conn.PostForm(path, args...)
+}
+
+func (c *WebConnWithErrors) PostJSON(path string, v any, opts ...RequestOption) (*Response, error) {
+	return c.Conn.PostJSON(path, v, opts...)
 }
 
 func (c *WebConnWithErrors) Put(path string, data url.Values, opts ...RequestOption) (*Response, error) {

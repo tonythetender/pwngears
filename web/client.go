@@ -9,11 +9,12 @@ import (
 )
 
 type Client struct {
-	httpClient *http.Client
-	baseURL    string
-	headers    map[string]string
-	jar        *cookiejar.Jar
-	logger     *slog.Logger
+	httpClient  *http.Client
+	baseURL     string
+	headers     map[string]string
+	jar         *cookiejar.Jar
+	logger      *slog.Logger
+	failOnError bool
 }
 
 func NewClient(baseURL string, logger *slog.Logger) (*Client, error) {
@@ -33,10 +34,11 @@ func NewClient(baseURL string, logger *slog.Logger) (*Client, error) {
 				return nil
 			},
 		},
-		baseURL: baseURL,
-		headers: make(map[string]string),
-		jar:     jar,
-		logger:  logger,
+		baseURL:     baseURL,
+		headers:     make(map[string]string),
+		jar:         jar,
+		logger:      logger,
+		failOnError: true,
 	}, nil
 }
 
