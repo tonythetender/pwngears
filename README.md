@@ -248,6 +248,11 @@ resp := conn.PostJSON("/api/login", map[string]any{
 	"id":       1,
 })
 ```
+For a hand-crafted body that is neither a form nor JSON, `PostRaw` sends a `string` or `[]byte` as-is and leaves the content type to you.
+```go
+resp := conn.PostRaw("/api", `{"id":1}`, WithContentType("application/json"))
+resp := conn.PostRaw("/upload", rawBytes, WithContentType("application/octet-stream"))
+```
 You can also keep the body or the form fields in a file and load them at runtime. `LoadFields` reads a JSON object into form fields (sent url-encoded, like a normal form), while `LoadJSON` reads a file to send as a raw JSON body.
 ```go
 resp := conn.PostForm("/login", LoadFields("login.json"))
@@ -261,6 +266,15 @@ var out struct {
 resp.JSON(&out)
 fmt.Println(out.Token)
 ```
+
+### One-off requests
+For a quick probe you don't need to build a connection first. The package-level `Get`, `Post`, `PostForm`, `PostJSON` and `PostRaw` take a full URL, fire a single request and return the response.
+```go
+resp := Get("http://some-ctf-website.com/robots.txt")
+resp := PostForm("http://some-ctf-website.com/login", Fields{"user": "admin"})
+resp := PostJSON("http://some-ctf-website.com/api", map[string]any{"id": 2})
+```
+Each call opens its own throwaway connection, so cookies are not kept between them. For a multi-step flow (such as logging in and then scraping) use a `Conn` instead.
 
 ### Reading responses
 The response gives you a few helpers to avoid writing regexes by hand. `Match` returns the first capture group (or the whole match if there is no group), while `MatchAll` returns every match.

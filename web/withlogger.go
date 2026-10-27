@@ -118,6 +118,37 @@ func (c *WebConnWithLogger) PostJSON(path string, v any, opts ...RequestOption) 
 	return resp
 }
 
+func (c *WebConnWithLogger) PostRaw(path string, body any, opts ...RequestOption) *Response {
+	resp, err := c.Conn.PostRaw(path, body, opts...)
+	if err != nil {
+		c.logAndFatal("Error during POST raw request",
+			slog.String("error", err.Error()),
+			slog.String("base-url", c.Conn.BaseURL),
+			slog.String("path", path))
+	}
+	return resp
+}
+
+func Get(url string, opts ...RequestOption) *Response {
+	return Conn(url).Get("", opts...)
+}
+
+func Post(url string, data url.Values, opts ...RequestOption) *Response {
+	return Conn(url).Post("", data, opts...)
+}
+
+func PostForm(url string, args ...any) *Response {
+	return Conn(url).PostForm("", args...)
+}
+
+func PostJSON(url string, v any, opts ...RequestOption) *Response {
+	return Conn(url).PostJSON("", v, opts...)
+}
+
+func PostRaw(url string, body any, opts ...RequestOption) *Response {
+	return Conn(url).PostRaw("", body, opts...)
+}
+
 func (c *WebConnWithLogger) Put(path string, data url.Values, opts ...RequestOption) *Response {
 	resp, err := c.Conn.Put(path, data, opts...)
 	if err != nil {

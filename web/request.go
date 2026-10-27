@@ -341,3 +341,16 @@ func (c *Client) PostJSON(path string, v any, opts ...RequestOption) (*Response,
 	allOpts := append([]RequestOption{WithContentType("application/json")}, opts...)
 	return c.request("POST", path, body, allOpts...)
 }
+
+func (c *WebConn) PostRaw(path string, body any, opts ...RequestOption) (*Response, error) {
+	return c.Client.PostRaw(path, body, opts...)
+}
+
+func (c *Client) PostRaw(path string, body any, opts ...RequestOption) (*Response, error) {
+	switch body.(type) {
+	case string, []byte, nil:
+	default:
+		return nil, fmt.Errorf("PostRaw body must be string or []byte, got %T", body)
+	}
+	return c.request("POST", path, body, opts...)
+}

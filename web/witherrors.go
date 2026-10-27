@@ -43,6 +43,10 @@ func (c *WebConnWithErrors) PostJSON(path string, v any, opts ...RequestOption) 
 	return c.Conn.PostJSON(path, v, opts...)
 }
 
+func (c *WebConnWithErrors) PostRaw(path string, body any, opts ...RequestOption) (*Response, error) {
+	return c.Conn.PostRaw(path, body, opts...)
+}
+
 func (c *WebConnWithErrors) Put(path string, data url.Values, opts ...RequestOption) (*Response, error) {
 	return c.Conn.Put(path, data, opts...)
 }
