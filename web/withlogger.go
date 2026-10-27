@@ -7,7 +7,7 @@ import (
 	"net/url"
 	"strings"
 
-	"github.com/tonythetender/pwngears"
+	pwnlog "github.com/tonythetender/pwngears/internal/pwnlog"
 )
 
 type WebConnWithLogger struct {
@@ -23,7 +23,7 @@ func (c *WebConnWithLogger) logAndFatal(msg string, args ...any) {
 }
 
 func Conn(baseUrl string) *WebConnWithLogger {
-	logger, err := pwngears.NewDefaultLogger("INFO")
+	logger, err := pwnlog.NewDefaultLogger("INFO")
 	if err != nil {
 		log.Fatalf("error generating the default logger: %v", err)
 	}
@@ -49,18 +49,22 @@ func (c *WebConnWithLogger) SetFailOnError(fail bool) {
 	c.Conn.Client.failOnError = fail
 }
 
+func (c *WebConnWithLogger) BaseURL() string {
+	return c.Conn.BaseURL
+}
+
 func (c *WebConnWithLogger) SetLogLevel(logLevel string) {
 	switch logLevel {
 	case "DEBUG", "debug":
-		pwngears.LogLevel.Set(slog.LevelDebug)
+		pwnlog.LogLevel.Set(slog.LevelDebug)
 	case "INFO", "info":
-		pwngears.LogLevel.Set(slog.LevelInfo)
+		pwnlog.LogLevel.Set(slog.LevelInfo)
 	case "WARN", "warn":
-		pwngears.LogLevel.Set(slog.LevelWarn)
+		pwnlog.LogLevel.Set(slog.LevelWarn)
 	case "ERROR", "error":
-		pwngears.LogLevel.Set(slog.LevelError)
+		pwnlog.LogLevel.Set(slog.LevelError)
 	case "IGNORE", "ignore":
-		pwngears.LogLevel.Set(12)
+		pwnlog.LogLevel.Set(12)
 	}
 }
 

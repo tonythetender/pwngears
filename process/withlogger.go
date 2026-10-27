@@ -5,7 +5,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/tonythetender/pwngears"
+	pwnlog "github.com/tonythetender/pwngears/internal/pwnlog"
 )
 
 func logFatal(logger *slog.Logger, failOnError bool, msg string, args ...any) {
@@ -122,15 +122,15 @@ func sendPayloadSizeT(t Tube, lg *slog.Logger, fail bool, p *Payload) {
 func setLogLevel(logLevel string) {
 	switch logLevel {
 	case "DEBUG", "debug":
-		pwngears.LogLevel.Set(slog.LevelDebug)
+		pwnlog.LogLevel.Set(slog.LevelDebug)
 	case "INFO", "info":
-		pwngears.LogLevel.Set(slog.LevelInfo)
+		pwnlog.LogLevel.Set(slog.LevelInfo)
 	case "WARN", "warn":
-		pwngears.LogLevel.Set(slog.LevelWarn)
+		pwnlog.LogLevel.Set(slog.LevelWarn)
 	case "ERROR", "error":
-		pwngears.LogLevel.Set(slog.LevelError)
+		pwnlog.LogLevel.Set(slog.LevelError)
 	case "IGNORE", "ignore":
-		pwngears.LogLevel.Set(12)
+		pwnlog.LogLevel.Set(12)
 	}
 }
 
@@ -191,7 +191,7 @@ func ProcessWith(path string, opts ...ProcessOption) *ProcessConnWithLogger {
 
 	logger := cfg.logger
 	if logger == nil {
-		l, err := pwngears.NewDefaultLogger("INFO")
+		l, err := pwnlog.NewDefaultLogger("INFO")
 		if err != nil {
 			slog.Default().Error("error generating the default logger", slog.String("error", err.Error()))
 			os.Exit(1)
@@ -301,7 +301,7 @@ type RemoteConnWithLogger struct {
 }
 
 func Remote(host string, port int, opts ...RemoteOption) *RemoteConnWithLogger {
-	logger, err := pwngears.NewDefaultLogger("INFO")
+	logger, err := pwnlog.NewDefaultLogger("INFO")
 	if err != nil {
 		slog.Default().Error("error generating the default logger", slog.String("error", err.Error()))
 		os.Exit(1)

@@ -13,7 +13,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/tonythetender/pwngears"
+	pwnlog "github.com/tonythetender/pwngears/internal/pwnlog"
 )
 
 type CryptoEngine struct {
@@ -21,7 +21,7 @@ type CryptoEngine struct {
 }
 
 func NewCryptoEngine() *CryptoEngine {
-	logger, err := pwngears.NewDefaultLogger("INFO")
+	logger, err := pwnlog.NewDefaultLogger("INFO")
 	if err != nil {
 		log.Fatalf("error generating the default logger: %v", err)
 	}

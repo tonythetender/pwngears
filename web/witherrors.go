@@ -4,7 +4,7 @@ import (
 	"log"
 	"net/url"
 
-	"github.com/tonythetender/pwngears"
+	pwnlog "github.com/tonythetender/pwngears/internal/pwnlog"
 )
 
 type WebConnWithErrors struct {
@@ -12,7 +12,7 @@ type WebConnWithErrors struct {
 }
 
 func ConnWithErrors(baseUrl string) (*WebConnWithErrors, error) {
-	logger, err := pwngears.NewDefaultLogger("IGNORE")
+	logger, err := pwnlog.NewDefaultLogger("IGNORE")
 	if err != nil {
 		log.Fatalf("error generating the default logger: %v", err)
 	}

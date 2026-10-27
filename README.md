@@ -17,7 +17,7 @@ Pwngears is a CTF framework and exploit development library based on pwntools. I
 - [x] Possibility to opt in and out of error returns and instead use a logger
 - [x] Cryptography support
 - [ ] ELF support
-- [ ] Exploit skeleton builder for quick setup with necessary packages
+- [x] Exploit skeleton builder for quick setup with necessary packages
 - [ ] GPU accelerated brute forcing
 - [ ] Image layer analysis
 

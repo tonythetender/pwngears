@@ -1,4 +1,4 @@
-package pwngears
+package pwnlog
 
 import (
 	"fmt"
