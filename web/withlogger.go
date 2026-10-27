@@ -95,6 +95,61 @@ func (c *WebConnWithLogger) Post(path string, data url.Values, opts ...RequestOp
 	return resp
 }
 
+func (c *WebConnWithLogger) Put(path string, data url.Values, opts ...RequestOption) *Response {
+	resp, err := c.Conn.Put(path, data, opts...)
+	if err != nil {
+		c.logAndFatal("Error during PUT request",
+			slog.String("error", err.Error()),
+			slog.String("base-url", c.Conn.BaseURL),
+			slog.String("path", path))
+	}
+	return resp
+}
+
+func (c *WebConnWithLogger) Patch(path string, data url.Values, opts ...RequestOption) *Response {
+	resp, err := c.Conn.Patch(path, data, opts...)
+	if err != nil {
+		c.logAndFatal("Error during PATCH request",
+			slog.String("error", err.Error()),
+			slog.String("base-url", c.Conn.BaseURL),
+			slog.String("path", path))
+	}
+	return resp
+}
+
+func (c *WebConnWithLogger) Delete(path string, opts ...RequestOption) *Response {
+	resp, err := c.Conn.Delete(path, opts...)
+	if err != nil {
+		c.logAndFatal("Error during DELETE request",
+			slog.String("error", err.Error()),
+			slog.String("base-url", c.Conn.BaseURL),
+			slog.String("path", path))
+	}
+	return resp
+}
+
+func (c *WebConnWithLogger) Head(path string, opts ...RequestOption) *Response {
+	resp, err := c.Conn.Head(path, opts...)
+	if err != nil {
+		c.logAndFatal("Error during HEAD request",
+			slog.String("error", err.Error()),
+			slog.String("base-url", c.Conn.BaseURL),
+			slog.String("path", path))
+	}
+	return resp
+}
+
+func (c *WebConnWithLogger) Options(path string, opts ...RequestOption) *Response {
+	resp, err := c.Conn.Options(path, opts...)
+	if err != nil {
+		c.logAndFatal("Error during OPTIONS request",
+			slog.String("error", err.Error()),
+			slog.String("base-url", c.Conn.BaseURL),
+			slog.String("path", path))
+	}
+	return resp
+}
+
 func (c *WebConnWithLogger) DisableRedirect() {
 	c.Conn.DisableRedirect()
 }

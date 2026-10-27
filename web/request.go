@@ -18,6 +18,26 @@ func (c *WebConn) Post(path string, data url.Values, opts ...RequestOption) (*Re
 	return c.Client.Post(path, data, opts...)
 }
 
+func (c *WebConn) Put(path string, data url.Values, opts ...RequestOption) (*Response, error) {
+	return c.Client.Put(path, data, opts...)
+}
+
+func (c *WebConn) Patch(path string, data url.Values, opts ...RequestOption) (*Response, error) {
+	return c.Client.Patch(path, data, opts...)
+}
+
+func (c *WebConn) Delete(path string, opts ...RequestOption) (*Response, error) {
+	return c.Client.Delete(path, opts...)
+}
+
+func (c *WebConn) Head(path string, opts ...RequestOption) (*Response, error) {
+	return c.Client.Head(path, opts...)
+}
+
+func (c *WebConn) Options(path string, opts ...RequestOption) (*Response, error) {
+	return c.Client.Options(path, opts...)
+}
+
 func (c *Client) Get(path string, opts ...RequestOption) (*Response, error) {
 	attrs := []any{
 		slog.String("url", c.baseURL),
@@ -46,6 +66,41 @@ func (c *Client) Post(path string, data url.Values, opts ...RequestOption) (*Res
 		c.logCookies()
 	}
 	return c.request("POST", path, data, opts...)
+}
+
+func (c *Client) Put(path string, data url.Values, opts ...RequestOption) (*Response, error) {
+	c.logger.Info("Making a PUT request",
+		slog.String("url", c.baseURL),
+		slog.String("path", path))
+	return c.request("PUT", path, data, opts...)
+}
+
+func (c *Client) Patch(path string, data url.Values, opts ...RequestOption) (*Response, error) {
+	c.logger.Info("Making a PATCH request",
+		slog.String("url", c.baseURL),
+		slog.String("path", path))
+	return c.request("PATCH", path, data, opts...)
+}
+
+func (c *Client) Delete(path string, opts ...RequestOption) (*Response, error) {
+	c.logger.Info("Making a DELETE request",
+		slog.String("url", c.baseURL),
+		slog.String("path", path))
+	return c.request("DELETE", path, nil, opts...)
+}
+
+func (c *Client) Head(path string, opts ...RequestOption) (*Response, error) {
+	c.logger.Info("Making a HEAD request",
+		slog.String("url", c.baseURL),
+		slog.String("path", path))
+	return c.request("HEAD", path, nil, opts...)
+}
+
+func (c *Client) Options(path string, opts ...RequestOption) (*Response, error) {
+	c.logger.Info("Making an OPTIONS request",
+		slog.String("url", c.baseURL),
+		slog.String("path", path))
+	return c.request("OPTIONS", path, nil, opts...)
 }
 
 func (c *Client) request(method, path string, data interface{}, opts ...RequestOption) (*Response, error) {

@@ -34,6 +34,26 @@ func (c *WebConnWithErrors) Post(path string, data url.Values, opts ...RequestOp
 	return c.Conn.Post(path, data, opts...)
 }
 
+func (c *WebConnWithErrors) Put(path string, data url.Values, opts ...RequestOption) (*Response, error) {
+	return c.Conn.Put(path, data, opts...)
+}
+
+func (c *WebConnWithErrors) Patch(path string, data url.Values, opts ...RequestOption) (*Response, error) {
+	return c.Conn.Patch(path, data, opts...)
+}
+
+func (c *WebConnWithErrors) Delete(path string, opts ...RequestOption) (*Response, error) {
+	return c.Conn.Delete(path, opts...)
+}
+
+func (c *WebConnWithErrors) Head(path string, opts ...RequestOption) (*Response, error) {
+	return c.Conn.Head(path, opts...)
+}
+
+func (c *WebConnWithErrors) Options(path string, opts ...RequestOption) (*Response, error) {
+	return c.Conn.Options(path, opts...)
+}
+
 func (c *WebConnWithErrors) DisableRedirect() {
 	c.Conn.DisableRedirect()
 }
