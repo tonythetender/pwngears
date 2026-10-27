@@ -14,7 +14,7 @@ type WebConnWithErrors struct {
 func ConnWithErrors(baseUrl string) (*WebConnWithErrors, error) {
 	logger, err := pwngears.NewDefaultLogger("IGNORE")
 	if err != nil {
-		log.Fatal("error generating the default logger: %v", err)
+		log.Fatalf("error generating the default logger: %v", err)
 	}
 	conn, err := NewConn(logger, baseUrl)
 	if err != nil {

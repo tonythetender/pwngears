@@ -26,20 +26,19 @@ func (c *Client) Get(path string, opts ...RequestOption) (*Response, error) {
 	for i, opt := range opts {
 		attrs = append(attrs, slog.String(fmt.Sprintf("opt[%d]", i), fmt.Sprint(opt)))
 	}
-	c.logger.Debug("Making a GET request", attrs)
+	c.logger.Debug("Making a GET request", attrs...)
 	return c.request("GET", path, nil, opts...)
 }
 
 func (c *Client) Post(path string, data url.Values, opts ...RequestOption) (*Response, error) {
-	c.logger.Info("Making a GET request",
+	c.logger.Info("Making a POST request",
 		slog.String("url", c.baseURL),
 		slog.String("path", path))
-	options := []slog.Attr{}
+	options := []any{}
 	for i, opt := range opts {
 		options = append(options, slog.String(fmt.Sprintf("opt[%d]", i), fmt.Sprint(opt)))
 	}
-	c.logger.Debug("Using the following options",
-		options)
+	c.logger.Debug("Using the following options", options...)
 	if len(c.headers) != 0 {
 		c.logHeaders()
 	}
@@ -53,6 +52,7 @@ func (c *Client) request(method, path string, data interface{}, opts ...RequestO
 	fullURL := c.baseURL + path
 
 	var body io.Reader
+	isForm := false
 	if data != nil {
 		switch v := data.(type) {
 		case string:
@@ -61,12 +61,7 @@ func (c *Client) request(method, path string, data interface{}, opts ...RequestO
 			body = bytes.NewReader(v)
 		case url.Values:
 			body = strings.NewReader(v.Encode())
-			if c.headers["Content-Type"] == "" {
-				if c.headers == nil {
-					c.headers = make(map[string]string)
-				}
-				c.headers["Content-Type"] = "application/x-www-form-urlencoded"
-			}
+			isForm = true
 		}
 	}
 
@@ -90,6 +85,10 @@ func (c *Client) request(method, path string, data interface{}, opts ...RequestO
 		}
 	}
 	req.URL = u
+
+	if isForm && req.Header.Get("Content-Type") == "" {
+		req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+	}
 
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
