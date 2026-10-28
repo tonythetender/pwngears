@@ -11,6 +11,7 @@ import (
 type (
 	Tube                  = process.Tube
 	Payload               = process.Payload
+	Check                 = process.Check
 	Exploit               = process.Exploit
 	ProcessConn           = process.ProcessConn
 	RemoteConn            = process.RemoteConn
@@ -52,6 +53,10 @@ type (
 type (
 	Bruteforcer = bruteforce.Bruteforcer
 	TestFunc    = bruteforce.TestFunc
+	GreaterFunc = bruteforce.GreaterFunc
+	FuzzHit     = web.FuzzHit
+	FuzzFilter  = web.FuzzFilter
+	Fuzzer      = web.Fuzzer
 )
 
 const (
@@ -69,6 +74,7 @@ var (
 	Remote            = process.Remote
 	RemoteWithLogger  = process.RemoteWithLogger
 	RemoteSSL         = process.RemoteSSL
+	NewRemote         = process.NewRemote
 	SSL               = process.SSL
 	WithSSL           = process.WithSSL
 	WithSNI           = process.WithSNI
@@ -80,7 +86,12 @@ var (
 	NewExploit        = process.NewExploit
 	AttachGDB         = process.AttachGDB
 	Pay               = process.Pay
+	Flat              = process.Flat
 	NewPayload        = process.NewPayload
+	RecvContains      = process.RecvContains
+	RecvLineContains  = process.RecvLineContains
+	Survives          = process.Survives
+	Crashed           = process.Crashed
 	P8                = process.P8
 	P16               = process.P16
 	P32               = process.P32
@@ -109,11 +120,11 @@ var (
 	ConnWithLogger  = web.ConnWithLogger
 	ConnWithErrors  = web.ConnWithErrors
 	NewForm         = web.NewForm
-	GetURL          = web.Get
-	PostURL         = web.Post
-	PostFormURL     = web.PostForm
-	PostJSONURL     = web.PostJSON
-	PostRawURL      = web.PostRaw
+	Get             = web.Get
+	Post            = web.Post
+	PostForm        = web.PostForm
+	PostJSON        = web.PostJSON
+	PostRaw         = web.PostRaw
 	WithParam       = web.WithParam
 	WithParams      = web.WithParams
 	WithHeader      = web.WithHeader
@@ -146,6 +157,18 @@ var (
 var (
 	NewBruteforcer  = bruteforce.NewBruteforcer
 	GenerateCharset = bruteforce.GenerateCharset
+)
+
+var (
+	Oracle        = web.Oracle
+	GreaterOracle = web.GreaterOracle
+	Fuzz          = web.Fuzz
+	MatchStatus   = web.MatchStatus
+	FilterStatus  = web.FilterStatus
+	MatchLength   = web.MatchLength
+	FilterLength  = web.FilterLength
+	MatchRegex    = web.MatchRegex
+	FilterRegex   = web.FilterRegex
 )
 
 var NewDefaultLogger = pwnlog.NewDefaultLogger

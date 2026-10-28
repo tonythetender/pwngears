@@ -1,9 +1,13 @@
 package bruteforce
 
 import (
+	"context"
 	"fmt"
 	"strings"
+	"sync"
 	"time"
+
+	"github.com/tonythetender/pwngears/process"
 )
 
 type Bruteforcer struct {
@@ -11,6 +15,7 @@ type Bruteforcer struct {
 	MaxLength     int
 	Delay         time.Duration
 	StopOnSuccess bool
+	Workers       int
 }
 
 func NewBruteforcer() *Bruteforcer {
@@ -19,43 +24,107 @@ func NewBruteforcer() *Bruteforcer {
 		MaxLength:     50,
 		Delay:         0,
 		StopOnSuccess: true,
+		Workers:       1,
 	}
+}
+
+func (b *Bruteforcer) workers() int {
+	if b.Workers < 1 {
+		return 1
+	}
+	return b.Workers
 }
 
 type TestFunc func(payload string) (bool, error)
 
+type GreaterFunc func(pos, value int) (bool, error)
+
+func firstTrue[T any](items []T, workers int, test func(T) (bool, error)) (T, bool, error) {
+	var zero T
+	if workers < 1 {
+		workers = 1
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	jobs := make(chan T)
+	go func() {
+		defer close(jobs)
+		for _, it := range items {
+			select {
+			case jobs <- it:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	var (
+		mu       sync.Mutex
+		result   T
+		found    bool
+		firstErr error
+		wg       sync.WaitGroup
+	)
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for it := range jobs {
+				if ctx.Err() != nil {
+					return
+				}
+				ok, err := test(it)
+				if err != nil {
+					mu.Lock()
+					if firstErr == nil {
+						firstErr = err
+					}
+					mu.Unlock()
+					cancel()
+					return
+				}
+				if ok {
+					mu.Lock()
+					if !found {
+						found = true
+						result = it
+					}
+					mu.Unlock()
+					cancel()
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+
+	if firstErr != nil {
+		return zero, false, firstErr
+	}
+	return result, found, nil
+}
+
 func (b *Bruteforcer) BruteforceCharByChar(prefix, suffix string, testFunc TestFunc) (string, error) {
 	result := prefix
+	chars := []rune(b.Charset)
 
 	for i := len(prefix); i < b.MaxLength; i++ {
-		found := false
-
-		for _, char := range b.Charset {
+		ch, found, err := firstTrue(chars, b.workers(), func(c rune) (bool, error) {
 			if b.Delay > 0 {
 				time.Sleep(b.Delay)
 			}
-
-			candidate := result + string(char)
-			testPayload := candidate + suffix
-
-			success, err := testFunc(testPayload)
-			if err != nil {
-				return result, err
-			}
-
-			if success {
-				result = candidate
-				found = true
-				fmt.Printf("[+] Found: %s\n", result)
-				break
-			}
+			return testFunc(result + string(c) + suffix)
+		})
+		if err != nil {
+			return result, err
 		}
-
 		if !found {
-			if b.StopOnSuccess {
-				break
-			}
+			break
 		}
+		result += string(ch)
+		process.Success(fmt.Sprintf("Found: %s", result))
 	}
 
 	return result, nil
@@ -63,39 +132,59 @@ func (b *Bruteforcer) BruteforceCharByChar(prefix, suffix string, testFunc TestF
 
 func (b *Bruteforcer) BlindSQL(prefix string, testFunc TestFunc) (string, error) {
 	result := ""
-	position := 1
+	chars := []rune(b.Charset)
 
-	for position <= b.MaxLength {
-		found := false
-
-		for _, char := range b.Charset {
+	for position := 1; position <= b.MaxLength; position++ {
+		pos := position
+		ch, found, err := firstTrue(chars, b.workers(), func(c rune) (bool, error) {
 			if b.Delay > 0 {
 				time.Sleep(b.Delay)
 			}
-
 			payload := fmt.Sprintf("%s AND SUBSTRING((SELECT %s),%d,1)='%c'",
-				prefix, prefix, position, char)
-
-			success, err := testFunc(payload)
-			if err != nil {
-				return result, err
-			}
-
-			if success {
-				result += string(char)
-				found = true
-				fmt.Printf("[+] Position %d: %c (Current: %s)\n", position, char, result)
-				break
-			}
+				prefix, prefix, pos, c)
+			return testFunc(payload)
+		})
+		if err != nil {
+			return result, err
 		}
-
 		if !found {
 			break
 		}
-		position++
+		result += string(ch)
+		process.Success(fmt.Sprintf("Position %d: %c (Current: %s)", pos, ch, result))
 	}
 
 	return result, nil
+}
+
+func (b *Bruteforcer) BinarySearch(greater GreaterFunc) (string, error) {
+	var out []byte
+
+	for pos := 1; pos <= b.MaxLength; pos++ {
+		lo, hi := 0, 127
+		for lo < hi {
+			mid := (lo + hi) / 2
+			if b.Delay > 0 {
+				time.Sleep(b.Delay)
+			}
+			g, err := greater(pos, mid)
+			if err != nil {
+				return string(out), err
+			}
+			if g {
+				lo = mid + 1
+			} else {
+				hi = mid
+			}
+		}
+		if lo == 0 {
+			break
+		}
+		out = append(out, byte(lo))
+		process.Success(fmt.Sprintf("Position %d: %c (Current: %s)", pos, lo, string(out)))
+	}
+
+	return string(out), nil
 }
 
 func (b *Bruteforcer) TimingAttack(basePayload string, testFunc func(string) time.Duration, threshold time.Duration) (string, error) {
@@ -115,7 +204,7 @@ func (b *Bruteforcer) TimingAttack(basePayload string, testFunc func(string) tim
 			if duration > threshold {
 				result += string(char)
 				found = true
-				fmt.Printf("[+] Timing attack found: %s (took %v)\n", result, duration)
+				process.Success(fmt.Sprintf("Timing attack found: %s (took %v)", result, duration))
 				break
 			}
 		}
@@ -139,12 +228,12 @@ func (b *Bruteforcer) FuzzParameter(basePayload string, wordlist []string, testF
 		payload := strings.Replace(basePayload, "FUZZ", word, -1)
 		success, err := testFunc(payload)
 		if err != nil {
-			continue
+			return validPayloads, err
 		}
 
 		if success {
 			validPayloads = append(validPayloads, word)
-			fmt.Printf("[+] Valid parameter found: %s\n", word)
+			process.Success(fmt.Sprintf("Valid parameter found: %s", word))
 		}
 	}
 
@@ -160,7 +249,7 @@ func (b *Bruteforcer) LengthOracle(prefix string, testFunc TestFunc) (int, error
 		}
 
 		if success {
-			fmt.Printf("[+] Length found: %d\n", length)
+			process.Success(fmt.Sprintf("Length found: %d", length))
 			return length, nil
 		}
 	}

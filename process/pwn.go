@@ -3,12 +3,14 @@ package process
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"encoding/binary"
 	"encoding/hex"
 	"fmt"
 	"io"
 	"os"
 	"os/exec"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -384,6 +386,7 @@ func Debug(msg string) {
 type Exploit struct {
 	tube        Tube
 	connectFunc func() Tube
+	Workers     int
 }
 
 func NewExploit(tube Tube) *Exploit {
@@ -392,6 +395,92 @@ func NewExploit(tube Tube) *Exploit {
 
 func (e *Exploit) SetConnectFunc(f func() Tube) {
 	e.connectFunc = f
+}
+
+func (e *Exploit) SetWorkers(n int) {
+	e.Workers = n
+}
+
+func (e *Exploit) effectiveWorkers() int {
+	w := e.Workers
+	if w < 1 {
+		w = 8
+	}
+	if e.connectFunc == nil {
+		if _, ok := e.tube.(*RemoteConn); !ok {
+			return 1
+		}
+	}
+	return w
+}
+
+func byteValues() []int {
+	v := make([]int, 256)
+	for i := range v {
+		v[i] = i
+	}
+	return v
+}
+
+func firstMatch[T any](items []T, workers int, test func(T) bool) (T, bool) {
+	var zero T
+	if workers < 1 {
+		workers = 1
+	}
+
+	if workers == 1 {
+		for _, it := range items {
+			if test(it) {
+				return it, true
+			}
+		}
+		return zero, false
+	}
+
+	ctx, cancel := context.WithCancel(context.Background())
+	defer cancel()
+
+	jobs := make(chan T)
+	go func() {
+		defer close(jobs)
+		for _, it := range items {
+			select {
+			case jobs <- it:
+			case <-ctx.Done():
+				return
+			}
+		}
+	}()
+
+	var (
+		mu     sync.Mutex
+		result T
+		found  bool
+		wg     sync.WaitGroup
+	)
+	for w := 0; w < workers; w++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for it := range jobs {
+				if ctx.Err() != nil {
+					return
+				}
+				if test(it) {
+					mu.Lock()
+					if !found {
+						found = true
+						result = it
+					}
+					mu.Unlock()
+					cancel()
+					return
+				}
+			}
+		}()
+	}
+	wg.Wait()
+	return result, found
 }
 
 func (e *Exploit) Reconnect() Tube {
@@ -408,70 +497,70 @@ func (e *Exploit) Reconnect() Tube {
 	}
 }
 
-func (e *Exploit) LeakCanary(bufferSize int, checkFunc func(Tube) bool) ([]byte, error) {
+func (e *Exploit) LeakCanary(bufferSize int, checkFunc Check) ([]byte, error) {
 	canary := make([]byte, 8)
 
 	for i := 0; i < 8; i++ {
 		Info(fmt.Sprintf("Bruteforcing canary byte %d", i))
+		known := append([]byte(nil), canary[:i]...)
 
-		for byteVal := 0; byteVal < 256; byteVal++ {
+		byteVal, found := firstMatch(byteValues(), e.effectiveWorkers(), func(v int) bool {
 			tube := e.Reconnect()
 			if tube == nil {
-				continue
+				return false
 			}
+			defer tube.Close()
 
-			payload := Pay().
+			Pay().
 				PadTo(bufferSize).
-				AddRaw(canary[:i]).
-				P8(uint8(byteVal))
+				AddRaw(known).
+				P8(uint8(v)).
+				SendWithSize(tube)
 
-			payload.SendWithSize(tube)
-
-			if checkFunc(tube) {
-				canary[i] = byte(byteVal)
-				Success(fmt.Sprintf("Found canary byte %d: 0x%02x", i, byteVal))
-				tube.Close()
-				break
-			}
-
-			tube.Close()
+			return checkFunc(tube)
+		})
+		if !found {
+			return canary, fmt.Errorf("could not resolve canary byte %d", i)
 		}
+
+		canary[i] = byte(byteVal)
+		Success(fmt.Sprintf("Found canary byte %d: 0x%02x", i, byteVal))
 	}
 
 	Success(fmt.Sprintf("Full canary: 0x%x", canary))
 	return canary, nil
 }
 
-func (e *Exploit) LeakAddress(bufferSize int, canary []byte, offset int, checkFunc func(Tube) bool) (uint64, error) {
+func (e *Exploit) LeakAddress(bufferSize int, canary []byte, offset int, checkFunc Check) (uint64, error) {
 	leak := make([]byte, 8)
 
 	for i := 0; i < 8; i++ {
 		Info(fmt.Sprintf("Bruteforcing address byte %d", i))
+		known := append([]byte(nil), leak[:i]...)
 
-		for byteVal := 0; byteVal < 256; byteVal++ {
+		byteVal, found := firstMatch(byteValues(), e.effectiveWorkers(), func(v int) bool {
 			tube := e.Reconnect()
 			if tube == nil {
-				continue
+				return false
 			}
+			defer tube.Close()
 
-			payload := Pay().
+			Pay().
 				PadTo(bufferSize).
 				Canary(canary).
 				Repeat("B", offset).
-				AddRaw(leak[:i]).
-				P8(uint8(byteVal))
+				AddRaw(known).
+				P8(uint8(v)).
+				SendWithSize(tube)
 
-			payload.SendWithSize(tube)
-
-			if checkFunc(tube) {
-				leak[i] = byte(byteVal)
-				Success(fmt.Sprintf("Found address byte %d: 0x%02x", i, byteVal))
-				tube.Close()
-				break
-			}
-
-			tube.Close()
+			return checkFunc(tube)
+		})
+		if !found {
+			return 0, fmt.Errorf("could not resolve address byte %d", i)
 		}
+
+		leak[i] = byte(byteVal)
+		Success(fmt.Sprintf("Found address byte %d: 0x%02x", i, byteVal))
 	}
 
 	addr := U64(leak)
@@ -497,32 +586,25 @@ func (e *Exploit) FindOffset(data interface{}) int {
 
 func (e *Exploit) BruteforceChar(prefix string, maxLen int, charset string, testFunc func(Tube, string) bool) (string, error) {
 	result := prefix
+	chars := []rune(charset)
 
 	for i := len(prefix); i < maxLen; i++ {
-		found := false
+		current := result
 
-		for _, char := range charset {
+		ch, found := firstMatch(chars, e.effectiveWorkers(), func(c rune) bool {
 			tube := e.Reconnect()
 			if tube == nil {
-				continue
+				return false
 			}
-
-			testPayload := result + string(char)
-
-			if testFunc(tube, testPayload) {
-				result = testPayload
-				found = true
-				Success(fmt.Sprintf("Found: %s", result))
-				tube.Close()
-				break
-			}
-
-			tube.Close()
-		}
-
+			defer tube.Close()
+			return testFunc(tube, current+string(c))
+		})
 		if !found {
 			break
 		}
+
+		result += string(ch)
+		Success(fmt.Sprintf("Found: %s", result))
 	}
 
 	return result, nil
@@ -533,30 +615,27 @@ func (e *Exploit) BruteforceByte(prefix []byte, maxLen int, testFunc func(Tube, 
 	copy(result, prefix)
 
 	for i := len(prefix); i < maxLen; i++ {
-		found := false
+		current := append([]byte(nil), result...)
 
-		for byteVal := 0; byteVal < 256; byteVal++ {
+		v, found := firstMatch(byteValues(), e.effectiveWorkers(), func(b int) bool {
 			tube := e.Reconnect()
 			if tube == nil {
-				continue
+				return false
 			}
+			defer tube.Close()
 
-			testPayload := append(result, byte(byteVal))
+			candidate := make([]byte, len(current)+1)
+			copy(candidate, current)
+			candidate[len(current)] = byte(b)
 
-			if testFunc(tube, testPayload) {
-				result = append(result, byte(byteVal))
-				found = true
-				Success(fmt.Sprintf("Found byte %d: 0x%02x", i, byteVal))
-				tube.Close()
-				break
-			}
-
-			tube.Close()
-		}
-
+			return testFunc(tube, candidate)
+		})
 		if !found {
 			break
 		}
+
+		result = append(result, byte(v))
+		Success(fmt.Sprintf("Found byte %d: 0x%02x", i, v))
 	}
 
 	return result, nil

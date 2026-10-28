@@ -1,6 +1,9 @@
 package process
 
-import "bytes"
+import (
+	"bytes"
+	"fmt"
+)
 
 type Payload struct {
 	data []byte
@@ -10,8 +13,39 @@ func NewPayload() *Payload {
 	return &Payload{data: []byte{}}
 }
 
-func Pay() *Payload {
-	return NewPayload()
+func flatten(parts ...any) []byte {
+	var out []byte
+	for _, p := range parts {
+		switch v := p.(type) {
+		case *Payload:
+			out = append(out, v.data...)
+		case []byte:
+			out = append(out, v...)
+		case string:
+			out = append(out, []byte(v)...)
+		case byte:
+			out = append(out, v)
+		case uint16:
+			out = append(out, P16(v)...)
+		case uint32:
+			out = append(out, P32(v)...)
+		case uint64:
+			out = append(out, P64(v)...)
+		case int:
+			out = append(out, P64(uint64(v))...)
+		default:
+			panic(fmt.Sprintf("flat: unsupported type %T", v))
+		}
+	}
+	return out
+}
+
+func Pay(parts ...any) *Payload {
+	return &Payload{data: flatten(parts...)}
+}
+
+func Flat(parts ...any) *Payload {
+	return &Payload{data: flatten(parts...)}
 }
 
 func (p *Payload) Add(data interface{}) *Payload {
@@ -65,6 +99,15 @@ func (p *Payload) Repeat(data interface{}, count int) *Payload {
 func (p *Payload) Canary(canary []byte) *Payload {
 	p.data = append(p.data, canary...)
 	return p
+}
+
+func (p *Payload) Flat(parts ...any) *Payload {
+	p.data = append(p.data, flatten(parts...)...)
+	return p
+}
+
+func (p *Payload) Ret(addr uint64) *Payload {
+	return p.P64(addr)
 }
 
 func (p *Payload) Len() int {
