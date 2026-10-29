@@ -20,7 +20,7 @@ type config struct {
 	target   string
 }
 
-var categories = []string{"pwn", "web", "crypto", "reverse", "misc"}
+var categories = []string{"pwn", "web", "crypto", "reverse", "scripting", "misc"}
 
 func main() {
 	flagName := flag.String("name", "", "challenge name")
@@ -77,10 +77,11 @@ func runForm(cfg *config) error {
 			huh.NewSelect[string]().
 				Title("Category").
 				Options(
-					huh.NewOption("pwn — binary exploitation", "pwn"),
+					huh.NewOption("pwn (binary exploitation)", "pwn"),
 					huh.NewOption("web", "web"),
 					huh.NewOption("crypto", "crypto"),
 					huh.NewOption("reverse", "reverse"),
+					huh.NewOption("scripting (interactive / PoW)", "scripting"),
 					huh.NewOption("misc", "misc"),
 				).
 				Value(&cfg.category),
@@ -194,7 +195,7 @@ import (
 	"fmt"
 	"regexp"
 
-	. "github.com/tonythetender/pwngears/web"
+	. "github.com/tonythetender/pwngears"
 )
 
 // Adjust to the challenge's flag format.
@@ -202,6 +203,11 @@ var flagRe = regexp.MustCompile(`+"`"+`FLAG\{[^}]*\}`+"`"+`)
 
 func main() {
 	conn := Conn(%q)
+
+	// To parse the HTML (select elements, submit a form with its hidden fields),
+	// the DOM helpers are in this same import:
+	//   page := Fetch(conn, "/")
+	//   page.Form("#login").Set("user", "admin").Submit()
 
 	resp := conn.Get("/")
 	fmt.Println("GET / ->", resp.StatusCode)
@@ -227,7 +233,7 @@ func main() {
 import (
 	"fmt"
 
-	. "github.com/tonythetender/pwngears/crypto"
+	. "github.com/tonythetender/pwngears"
 )
 
 func main() {
@@ -257,7 +263,7 @@ import (
 	"fmt"
 	"regexp"
 
-	. "github.com/tonythetender/pwngears/process"
+	. "github.com/tonythetender/pwngears"
 )
 
 // Adjust to the challenge's flag format.
@@ -276,6 +282,38 @@ func main() {
 }
 `
 
+	case "scripting":
+		return fmt.Sprintf(`package main
+
+import (
+	"fmt"
+
+	. "github.com/tonythetender/pwngears"
+)
+
+func main() {
+	r := %s
+	defer r.Close()
+
+	// If the service gates on a proof of work, clear it first. Adjust the
+	// pattern and difficulty to the challenge:
+	//   ClearPoW(r, "prefix=(?P<prefix>\w+)", 24)
+
+	// Read each prompt, compute an answer, send it, and stop at the flag.
+	Expect(r, nil, 0, func(rd *Round) {
+		if f := rd.Flag("FLAG"); f != "" {
+			fmt.Println("flag:", f)
+			rd.Stop()
+			return
+		}
+		n := rd.Ints()
+		if len(n) >= 2 {
+			rd.Send(n[0] + n[1])
+		}
+	})
+}
+`, pwnConn(cfg.target))
+
 	default: // pwn, reverse
 		return fmt.Sprintf(`package main
 
@@ -284,7 +322,7 @@ import (
 	"regexp"
 	"time"
 
-	. "github.com/tonythetender/pwngears/process"
+	. "github.com/tonythetender/pwngears"
 )
 
 // Adjust to the challenge's flag format.

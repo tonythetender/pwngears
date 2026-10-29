@@ -1,9 +1,9 @@
-Pwngears is a CTF framework and exploit development library based on pwntools. It aims to provide an improved API and better error handling while adding more functionnalities regarding challenges other than binary exploitation. It also aims to provide its core package without any external dependencies, leveraging the Go standard library. 
+Pwngears is a CTF framework and exploit development library based on pwntools. It aims to provide an improved API and better error handling while adding more functionnalities regarding challenges other than binary exploitation. It also aims to stay light on dependencies, leaning on the Go standard library with `golang.org/x/net` as the only third-party package (for HTML parsing). 
 
 ## Why Go? And why make an alternative to Pwntools?
 - Compiles into a static binary, eliminating risk of an exploit not working on somebody else version of the python interpreter. Also has easy cross compilation.
 - Good performance and cheap goroutines allows for easy and quick byte-by-bytes leaks, length leaks and blind SQLI.
-- The Go standard library provides all the tooling to make this library possible. This eliminates the dependency on other libraries the same way pwntools requires.
+- The Go standard library provides most of the tooling to make this library possible, keeping external dependencies to a minimum.
 - Strong static typing helps prevents inattention errors during the writing of your exploit.
 - Compare to other great compiled language, Go also provide good developer velocity with a clear and concise syntax.
 
@@ -76,7 +76,7 @@ Almost everything is re-exported from a single root package, so most exploits on
 ```go
 import . "github.com/tonythetender/pwngears"
 ```
-This gives you the whole dependency-free core (binary exploitation, web, cryptography, bruteforcing, injection payloads, scripting automation and the magic toolkit) under one namespace, and compiles to a lean static binary with no third-party code. You can still import the subpackages directly (`pwngears/web`, `pwngears/bruteforce`, ...) if you prefer a narrower namespace. Features that need an external dependency live in their own opt-in subpackage, such as the HTML navigation package `web/dom`.
+This gives you the whole toolkit (binary exploitation, web, DOM parsing, cryptography, bruteforcing, injection payloads, scripting automation and the magic toolkit) under one namespace. Its only external dependency is `golang.org/x/net`, pulled in for the HTML parsing behind the DOM helpers, so it stays light and compiles to a small static binary. You can still import the subpackages directly (`pwngears/web`, `pwngears/bruteforce`, ...) if you prefer a narrower namespace.
 
 > [!NOTE]
 > The docs use the `.` dot-import for brevity. If you have name clashes with your own code or other libraries, switch to an explicit import.
@@ -132,15 +132,13 @@ resp.JSON(&out)                 // decode the body into a struct
 Under the default connection `Match` and `Flag` exit when nothing matches (call `SetFailOnError(false)` for an empty result instead). A complete flow, with params, a form login, fuzzing and blind extraction, is in `examples/web`.
 
 ### DOM parsing
-To parse HTML rather than grep it, use the opt-in `web/dom` package (built on `golang.org/x/net/html`, so it stays out of the zero-dependency core).
+To parse HTML rather than grep it, the DOM helpers come with the root import (they are what pulls in `golang.org/x/net`).
 ```go
-import "github.com/tonythetender/pwngears/web/dom"
-
-page := dom.Fetch(conn, "/")
+page := Fetch(conn, "/")
 title := page.First("h1").Text()
 page.Form("#login").Set("user", "admin").Set("password", "x").Submit()
 ```
-It has a small CSS-like selector (`tag`, `.class`, `#id`, `[attr=value]`, descendants), link following that keeps the session, and a `Form` that pre-loads hidden and CSRF fields so you only set what you change.
+`Fetch` returns a `Page`, and `First`/`All` return a `Node`. It has a small CSS-like selector (`tag`, `.class`, `#id`, `[attr=value]`, descendants), link following that keeps the session, and a `Form` that pre-loads hidden and CSRF fields so you only set what you change.
 
 ## Binary exploitation
 Connect to a local binary or a remote service. Both share the same send and receive API.

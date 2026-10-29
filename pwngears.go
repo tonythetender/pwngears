@@ -9,6 +9,7 @@ import (
 	"github.com/tonythetender/pwngears/process"
 	"github.com/tonythetender/pwngears/scripting"
 	"github.com/tonythetender/pwngears/web"
+	"github.com/tonythetender/pwngears/web/dom"
 )
 
 type (
@@ -268,5 +269,16 @@ var (
 type RailFenceCipher = crypto.RailFenceCipher
 
 var SubstitutionDecrypt = crypto.SubstitutionDecrypt
+
+type (
+	Page    = dom.Page
+	Node    = dom.Node
+	DOMForm = dom.Form
+)
+
+var (
+	Fetch     = dom.Fetch
+	ParsePage = dom.Parse
+)
 
 var NewDefaultLogger = pwnlog.NewDefaultLogger

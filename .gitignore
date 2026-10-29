@@ -23,3 +23,6 @@ go.work.sum
 
 # IDE files
 .idea
+
+# Compiled scaffolder binary
+/cmd/pwngears/pwngears
