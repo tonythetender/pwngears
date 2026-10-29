@@ -39,6 +39,8 @@ type TestFunc func(payload string) (bool, error)
 
 type GreaterFunc func(pos, value int) (bool, error)
 
+type CharFunc func(pos int, c byte) (bool, error)
+
 func firstTrue[T any](items []T, workers int, test func(T) (bool, error)) (T, bool, error) {
 	var zero T
 	if workers < 1 {
@@ -182,6 +184,31 @@ func (b *Bruteforcer) BinarySearch(greater GreaterFunc) (string, error) {
 		}
 		out = append(out, byte(lo))
 		process.Success(fmt.Sprintf("Position %d: %c (Current: %s)", pos, lo, string(out)))
+	}
+
+	return string(out), nil
+}
+
+func (b *Bruteforcer) Scan(test CharFunc) (string, error) {
+	var out []byte
+	chars := []byte(b.Charset)
+
+	for position := 1; position <= b.MaxLength; position++ {
+		pos := position
+		c, found, err := firstTrue(chars, b.workers(), func(ch byte) (bool, error) {
+			if b.Delay > 0 {
+				time.Sleep(b.Delay)
+			}
+			return test(pos, ch)
+		})
+		if err != nil {
+			return string(out), err
+		}
+		if !found {
+			break
+		}
+		out = append(out, c)
+		process.Success(fmt.Sprintf("Position %d: %c (Current: %s)", pos, c, string(out)))
 	}
 
 	return string(out), nil

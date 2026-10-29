@@ -19,3 +19,13 @@ func GreaterOracle(send func(pos, value int) *Response, pred func(*Response) boo
 		return pred(resp), nil
 	}
 }
+
+func CharOracle(send func(pos int, c byte) *Response, pred func(*Response) bool) func(pos int, c byte) (bool, error) {
+	return func(pos int, c byte) (bool, error) {
+		resp := send(pos, c)
+		if resp == nil {
+			return false, nil
+		}
+		return pred(resp), nil
+	}
+}

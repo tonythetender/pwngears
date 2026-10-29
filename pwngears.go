@@ -4,6 +4,7 @@ import (
 	"github.com/tonythetender/pwngears/bruteforce"
 	"github.com/tonythetender/pwngears/crypto"
 	"github.com/tonythetender/pwngears/internal/pwnlog"
+	"github.com/tonythetender/pwngears/payloads"
 	"github.com/tonythetender/pwngears/process"
 	"github.com/tonythetender/pwngears/web"
 )
@@ -54,6 +55,7 @@ type (
 	Bruteforcer = bruteforce.Bruteforcer
 	TestFunc    = bruteforce.TestFunc
 	GreaterFunc = bruteforce.GreaterFunc
+	CharFunc    = bruteforce.CharFunc
 	FuzzHit     = web.FuzzHit
 	FuzzFilter  = web.FuzzFilter
 	Fuzzer      = web.Fuzzer
@@ -162,6 +164,7 @@ var (
 var (
 	Oracle        = web.Oracle
 	GreaterOracle = web.GreaterOracle
+	CharOracle    = web.CharOracle
 	Fuzz          = web.Fuzz
 	MatchStatus   = web.MatchStatus
 	FilterStatus  = web.FilterStatus
@@ -169,6 +172,31 @@ var (
 	FilterLength  = web.FilterLength
 	MatchRegex    = web.MatchRegex
 	FilterRegex   = web.FilterRegex
+)
+
+type (
+	Dialect = payloads.Dialect
+	SQLi    = payloads.SQLi
+)
+
+const (
+	MySQL    = payloads.MySQL
+	Postgres = payloads.Postgres
+	SQLite   = payloads.SQLite
+	MSSQL    = payloads.MSSQL
+	OracleDB = payloads.OracleDB
+)
+
+var (
+	AuthBypass    = payloads.AuthBypass
+	UnionNull     = payloads.UnionNull
+	OrderBy       = payloads.OrderBy
+	TimeDelay     = payloads.TimeDelay
+	CmdInjection  = payloads.CmdInjection
+	PathTraversal = payloads.PathTraversal
+	SSTI          = payloads.SSTI
+	XSS           = payloads.XSS
+	NoSQL         = payloads.NoSQL
 )
 
 var NewDefaultLogger = pwnlog.NewDefaultLogger

