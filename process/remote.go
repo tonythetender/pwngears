@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net"
 	"strconv"
+	"time"
 )
 
 type RemoteConn struct {
@@ -106,6 +107,16 @@ func RemoteSSL(host string, port int) (*RemoteConn, error) {
 
 func (r *RemoteConn) GetPID() int {
 	return -1
+}
+
+// SetReadDeadline bounds how long a subsequent read may block. A zero time
+// clears the deadline. After the deadline passes, reads fail with a timeout
+// error, which higher-level loops treat as end-of-stream.
+func (r *RemoteConn) SetReadDeadline(t time.Time) error {
+	if r.conn == nil {
+		return nil
+	}
+	return r.conn.SetReadDeadline(t)
 }
 
 func (r *RemoteConn) Reconnect() (*RemoteConn, error) {

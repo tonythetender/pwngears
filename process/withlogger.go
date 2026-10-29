@@ -286,6 +286,20 @@ func (p *ProcessConnWithLogger) SendPayloadSize(payload *Payload) {
 	sendPayloadSizeT(p.ProcessConn, p.ProcessConn.logger, p.failOnError, payload)
 }
 
+// TryRecvLine reads a line without failing on error; ok is false on EOF or a
+// read error, so a hand-written loop can stop cleanly.
+func (p *ProcessConnWithLogger) TryRecvLine() (line []byte, ok bool) {
+	b, err := p.ProcessConn.RecvLine()
+	return b, err == nil
+}
+
+// TryRecvUntil reads up to delim without failing on error; ok is false on EOF
+// or a read error.
+func (p *ProcessConnWithLogger) TryRecvUntil(delim any) (data []byte, ok bool) {
+	b, err := p.ProcessConn.RecvUntil(delim)
+	return b, err == nil
+}
+
 func (p *ProcessConnWithLogger) Interactive() {
 	interactiveT(p.ProcessConn, p.ProcessConn.logger, p.failOnError)
 }
@@ -392,6 +406,20 @@ func (r *RemoteConnWithLogger) SendPayload(payload *Payload) {
 
 func (r *RemoteConnWithLogger) SendPayloadSize(payload *Payload) {
 	sendPayloadSizeT(r.RemoteConn, r.logger, r.failOnError, payload)
+}
+
+// TryRecvLine reads a line without failing on error; ok is false on EOF or a
+// read error, so a hand-written loop can stop cleanly.
+func (r *RemoteConnWithLogger) TryRecvLine() (line []byte, ok bool) {
+	b, err := r.RemoteConn.RecvLine()
+	return b, err == nil
+}
+
+// TryRecvUntil reads up to delim without failing on error; ok is false on EOF
+// or a read error.
+func (r *RemoteConnWithLogger) TryRecvUntil(delim any) (data []byte, ok bool) {
+	b, err := r.RemoteConn.RecvUntil(delim)
+	return b, err == nil
 }
 
 func (r *RemoteConnWithLogger) Interactive() {

@@ -76,7 +76,7 @@ Everything you need for the common case is re-exported from a single root packag
 ```go
 import . "github.com/tonythetender/pwngears"
 ```
-This gives you the whole dependency-free core (binary exploitation, web, cryptography, bruteforcing and injection payloads) under one namespace. The root package pulls in no third-party code, so an exploit built on it compiles to a lean static binary.
+This gives you the whole dependency-free core (binary exploitation, web, cryptography, bruteforcing, injection payloads, scripting automation and the magic toolkit) under one namespace. The root package pulls in no third-party code, so an exploit built on it compiles to a lean static binary.
 
 If you prefer a more focused namespace, you can still import the individual subpackages directly.
 ```go
@@ -346,7 +346,7 @@ r.SendLineAfter("Name: ", "John")
 ```
 
 #### Building payloads
-Payloads are built fluently. `Pay()` (or `Flat()`) takes any mix of parts in a single call: a `string` or `[]byte` is appended raw, and an integer is packed little-endian. Bare integers are packed as 64-bit, since addresses are the common case; use a `uint32`/`uint16`/`byte` value (or `P32`/`P16`/`P8`) when you need a narrower width.
+Payloads are built fluently. `Pay()` (or `Flat()`) takes any mix of parts in a single call: a `string` or `[]byte` is appended raw, and an integer is packed little-endian. Bare integers are packed as 64-bit, since addresses are the common case. Use a `uint32`/`uint16`/`byte` value (or `P32`/`P16`/`P8`) when you need a narrower width.
 ```go
 // padding is []byte, the rest are uint64 addresses
 Flat(padding, popRdi, binsh, ret, system)
@@ -366,7 +366,7 @@ r.SendPayload(payload)
 ## Advanced Syntax
 
 ### Bruteforcing and oracles
-A lot of challenges make you recover a value one character at a time: blind SQL injection, a comparison endpoint, a reset token check. The `Bruteforcer` drives the loop; an *oracle* tells it whether a guess is correct.
+A lot of challenges make you recover a value one character at a time: blind SQL injection, a comparison endpoint, a reset token check. The `Bruteforcer` drives the loop, and an *oracle* tells it whether a guess is correct.
 
 `Oracle` turns "send a payload, then look at the response" into the yes/no test the bruteforcer expects. You decide how the payload is sent (query parameter, path, header, body) and what counts as success.
 ```go
@@ -382,7 +382,7 @@ oracle := Oracle(
 
 bf := NewBruteforcer()
 bf.Charset = GenerateCharset("lowercase", "digits")
-bf.Workers = 16 // test the charset concurrently; leave at 1 for a sequential scan
+bf.Workers = 16 // test the charset concurrently, leave at 1 for a sequential scan
 bf.Delay = 50 * time.Millisecond
 
 password, _ := bf.BruteforceCharByChar("", "", oracle)
@@ -420,7 +420,7 @@ for _, h := range hits {
 	fmt.Printf("%-20s status=%d len=%d\n", h.Word, h.Status, h.Length)
 }
 ```
-Filters are combined with AND. `MatchStatus`, `MatchLength` and `MatchRegex` keep a response; `FilterStatus`, `FilterLength` and `FilterRegex` discard one (handy for hiding a known "not found" page). Fuzzing runs 20 workers by default; use `Fuzzer{Workers: n}.Run(...)` to change that. Hits come back in wordlist order.
+Filters are combined with AND. `MatchStatus`, `MatchLength` and `MatchRegex` keep a response, while `FilterStatus`, `FilterLength` and `FilterRegex` discard one (handy for hiding a known "not found" page). Fuzzing runs 20 workers by default. Use `Fuzzer{Workers: n}.Run(...)` to change that. Hits come back in wordlist order.
 
 ### Time-based SQLI
 Sometimes the response is identical whether the guess is right or wrong, and the only signal is how long the query takes. `TimingAttack` measures each attempt and keeps a character when the request runs longer than your threshold. It stays sequential on purpose, since running attempts in parallel would add noise to the timing.
@@ -478,7 +478,7 @@ scan := CharOracle(
 bf.Charset = GenerateCharset("lowercase", "digits")
 password, _ := bf.Scan(scan)
 ```
-When you just want to throw a list of known vectors at an endpoint, the catalog returns ready-made payloads that feed `Fuzz` directly. For SQL there is `AuthBypass()`, `UnionNull(n)`, `OrderBy(n)` and `TimeDelay(dialect, seconds)`; for other classes there is `CmdInjection()`, `PathTraversal()`, `SSTI()`, `XSS()` and `NoSQL()`.
+When you just want to throw a list of known vectors at an endpoint, the catalog returns ready-made payloads that feed `Fuzz` directly. For SQL there is `AuthBypass()`, `UnionNull(n)`, `OrderBy(n)` and `TimeDelay(dialect, seconds)`. For other classes there is `CmdInjection()`, `PathTraversal()`, `SSTI()`, `XSS()` and `NoSQL()`.
 ```go
 hits := Fuzz(
 	func(p string) *Response { return conn.Get("/render", WithParam("name", p)) },
@@ -486,6 +486,78 @@ hits := Fuzz(
 	MatchRegex("49"),   // the template engine evaluated {{7*7}}
 )
 ```
+
+### Scripting and automation
+Many challenges are a connect-and-loop grind: read a prompt, compute an answer, send it, and repeat. That often means hundreds of rounds under a timer, sometimes behind a proof-of-work gate. The scripting helpers (in scope with the root import) turn that into a few lines.
+
+`Expect` drives the loop. Each round it reads a chunk and hands you a `Round`. You reply with `r.Send(...)` (numbers go out as their decimal text, since these are text protocols), end the loop with `r.Stop()`, or do nothing to skip the round.
+```go
+r := Remote("chal.ctf", 1337)
+defer r.Close()
+
+// Answer 500 "a + b" prompts.
+Expect(r, nil, 500, func(r *Round) {
+	n := r.Ints()
+	r.Send(n[0] + n[1])
+})
+```
+A `Round` embeds a `Prompt`, which parses the chunk with the same helpers as a web `Response`: `Match`/`MatchAll`/`Group` (regex), `Int`/`Ints`/`BigInt`, `Hex`, `Base64` and `Flag`. You can `Send` more than once, or not at all, and `r.Tube()` is the escape hatch for a round that needs extra reads.
+```go
+Expect(r, nil, 0, func(r *Round) {   // 0 rounds = until Stop or EOF
+	flag := r.Flag("flag")
+	if flag != "" {
+		fmt.Println(flag)
+		r.Stop()
+		return
+	}
+	r.Send(r.Int() * 2)   // echo and compute
+})
+```
+For finer control, build a `Loop` fluently: `NewLoop(r).Until("> ").Rounds(100).Timeout(30*time.Second).Run(fn)`. `Until` sets the per-round delimiter (default: a line). `Timeout` is a real deadline on remote connections, so a blocked read is interrupted rather than hanging the script. If you would rather write the loop yourself, `r.TryRecvLine()` and `r.TryRecvUntil(delim)` return `(data, ok)` with `ok == false` on end-of-stream instead of exiting.
+
+**Proof-of-work gates** are solved in parallel (one goroutine per core). The canonical forms are one-liners:
+```go
+// sha256(prefix || X) with 24 leading zero bits (redpwn style):
+pow := PoWLeadingZeroBits([]byte(prefix), 24)
+r.SendLine(pow.Suffix)
+
+PoWLeadingZeroNibbles(prefix, 6)   // hex digest starts with 6 zeros
+PoWPrefixEquals(prefix, target)    // digest starts with target bytes
+PoWSuffixEquals(target)            // sha256(X) ends with target (hashes X alone)
+```
+Each returns the found `X` as `Suffix` (with the full `Input` and `Digest`). Tune with `WithPoWWorkers`, `WithPoWTimeout`, and `WithPoWEncoding`/`WithPoWCharset` (decimal by default, or hex, raw bytes, or a restricted charset). For an unusual gate, `SolveHashPoW(prefix, func(sum []byte) bool { ... })` takes any predicate over the digest.
+
+When the gate is announced on the wire, `ClearPoW` reads the line, extracts the prefix, solves and sends in one call. The pattern captures the prefix (a group named `prefix`, or the first group), and an optional `bits` group overrides the difficulty argument.
+```go
+// line looks like: "proof of work: sha256(prefix=aB3xZ + X) needs 24 zero bits"
+ClearPoW(r, `prefix=(?P<prefix>\w+)`, 24)
+```
+
+### Magic: decode, identify, auto-solve
+The other recurring grind is working out what an opaque blob even is, then peeling encoding layers, identifying a hash or file type, or recognizing and cracking a classical cipher. The magic helpers do this offline, no CyberChef / hashid / dcode round-trip.
+
+`Magic` auto-detects and strips encoding layers (base64/base32/hex/binary/ascii-decimal/url and ROT-n) in a scored best-first search, returning candidate chains ranked best-first.
+```go
+for _, d := range Magic(blob, WithFlagRegex(`flag\{[^}]*\}`)) {
+	fmt.Printf("%q  via %v\n", d.Output, d.Chain)  // e.g. "flag{...}" via [hex base64 rot:13]
+}
+```
+Pass `WithFlagRegex` (or your CTF's prefix) so the real flag ranks first. Otherwise candidates are ranked by how English-like they look. `WithDepth` caps how many layers are peeled. The individual codecs (`B64Decode`, `HexDecode`, `BinaryDecode`, `DecimalDecode`, `URLDecode`, `ROT`) are exported too.
+
+`Identify` fingerprints a blob the way `hashid` + `file` would: likely hash types (by length/charset and structured prefixes like `$2b$`), encodings, file type (magic bytes) and timestamp interpretations.
+```go
+fp := Identify([]byte("5d41402abc4b2a76b9719d911017c592"))
+// fp.Charset == "hex", and fp.HashGuesses includes MD5, NTLM, ...
+```
+`AutoSolve` identifies and cracks classical ciphers: Caesar/ROT, single-byte XOR, Vigenère (key length via index of coincidence), rail-fence and substitution (frequency hill-climb). It scores each result for English-ness and returns ranked candidates.
+```go
+for _, c := range AutoSolve(ciphertext) {
+	fmt.Printf("%-12s %q\n", c.Method, c.Plaintext)
+}
+```
+Narrow the search with `WithSolveMethods("vigenere", "xor")`, bound Vigenère with `WithSolveMaxKeyLen`, and set `WithSolveFlagRegex` to rank a known flag format to the top. The substitution solver uses a compact built-in English model (no external data), so it recovers typical prose to a strongly-English decryption, occasionally leaving a few rare letters to fix by eye. The new `RailFenceCipher` and `SubstitutionDecrypt` are also exported for direct use (RailFence plugs into the crypto `BruteForce` engine like any other `Cipher`).
+
+Both tools are shown end to end in runnable examples. `go run ./examples/scripting/` solves an interactive proof-of-work and round loop against a built-in stub server (so it runs with no setup), and `go run ./examples/magic/` runs the offline decode, identify and auto-solve flow.
 
 ### Binary Exploitation
 Some helpers automate leaking a stack canary or an address by brute-forcing one byte at a time. These helpers operate on the raw `Tube`, so open the connection with `NewRemote` (which returns a tube) rather than the logger wrapper, and give the exploit a function that reconnects and gets you back to the leak point.

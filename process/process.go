@@ -7,6 +7,7 @@ import (
 	"log/slog"
 	"os"
 	"os/exec"
+	"time"
 )
 
 type ProcessConn struct {
@@ -69,6 +70,15 @@ func (p *ProcessConn) GetPID() int {
 		return p.cmd.Process.Pid
 	}
 	return -1
+}
+
+// SetReadDeadline bounds how long a subsequent read may block. The stdout pipe
+// supports deadlines on most platforms; where it does not, this is a no-op.
+func (p *ProcessConn) SetReadDeadline(t time.Time) error {
+	if f, ok := p.stdout.(interface{ SetReadDeadline(time.Time) error }); ok {
+		return f.SetReadDeadline(t)
+	}
+	return nil
 }
 
 func (p *ProcessConn) Kill() error {

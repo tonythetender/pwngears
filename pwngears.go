@@ -4,8 +4,10 @@ import (
 	"github.com/tonythetender/pwngears/bruteforce"
 	"github.com/tonythetender/pwngears/crypto"
 	"github.com/tonythetender/pwngears/internal/pwnlog"
+	"github.com/tonythetender/pwngears/magic"
 	"github.com/tonythetender/pwngears/payloads"
 	"github.com/tonythetender/pwngears/process"
+	"github.com/tonythetender/pwngears/scripting"
 	"github.com/tonythetender/pwngears/web"
 )
 
@@ -198,5 +200,73 @@ var (
 	XSS           = payloads.XSS
 	NoSQL         = payloads.NoSQL
 )
+
+type (
+	Loop        = scripting.Loop
+	Round       = scripting.Round
+	Prompt      = scripting.Prompt
+	PoW         = scripting.PoW
+	PoWOption   = scripting.PoWOption
+	PoWEncoding = scripting.PoWEncoding
+	LoggerTube  = scripting.LoggerTube
+)
+
+const (
+	PoWDecimal = scripting.PoWDecimal
+	PoWHex     = scripting.PoWHex
+	PoWRaw     = scripting.PoWRaw
+	PoWCharset = scripting.PoWCharset
+)
+
+var (
+	NewLoop               = scripting.NewLoop
+	Expect                = scripting.Expect
+	ClearPoW              = scripting.ClearPoW
+	SolveHashPoW          = scripting.SolveHashPoW
+	PoWLeadingZeroBits    = scripting.PoWLeadingZeroBits
+	PoWLeadingZeroNibbles = scripting.PoWLeadingZeroNibbles
+	PoWPrefixEquals       = scripting.PoWPrefixEquals
+	PoWSuffixEquals       = scripting.PoWSuffixEquals
+	WithPoWWorkers        = scripting.WithPoWWorkers
+	WithPoWTimeout        = scripting.WithPoWTimeout
+	WithPoWEncoding       = scripting.WithPoWEncoding
+	WithPoWCharset        = scripting.WithPoWCharset
+)
+
+type (
+	Decoding    = magic.Decoding
+	Layer       = magic.Layer
+	Score       = magic.Score
+	Fingerprint = magic.Fingerprint
+	HashGuess   = magic.HashGuess
+	FileType    = magic.FileType
+	TimeGuess   = magic.TimeGuess
+	Candidate   = magic.Candidate
+	MagicOption = magic.MagicOption
+	SolveOption = magic.SolveOption
+)
+
+var (
+	Magic              = magic.Magic
+	Identify           = magic.Identify
+	AutoSolve          = magic.AutoSolve
+	B64Decode          = magic.B64Decode
+	B32Decode          = magic.B32Decode
+	HexDecode          = magic.HexDecode
+	BinaryDecode       = magic.BinaryDecode
+	DecimalDecode      = magic.DecimalDecode
+	URLDecode          = magic.URLDecode
+	ROT                = magic.ROT
+	WithDepth          = magic.WithDepth
+	WithFlagRegex      = magic.WithFlagRegex
+	WithSolveFlagRegex = magic.WithSolveFlagRegex
+	WithSolveMethods   = magic.WithSolveMethods
+	WithSolveTopN      = magic.WithSolveTopN
+	WithSolveMaxKeyLen = magic.WithSolveMaxKeyLen
+)
+
+type RailFenceCipher = crypto.RailFenceCipher
+
+var SubstitutionDecrypt = crypto.SubstitutionDecrypt
 
 var NewDefaultLogger = pwnlog.NewDefaultLogger
